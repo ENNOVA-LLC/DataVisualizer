@@ -112,8 +112,7 @@ def get_data_from_json(prop_json) -> tuple:
     """
     # convert json to df
     df = pd.read_json(prop_json, orient='index')
-    st.dataframe(df.copy())
-
+    
     # extract properties
     coord_label = np.array(df.at['coord_label', 0])
     coord_unit = np.array(df.at['coord_unit', 0])

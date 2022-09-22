@@ -218,7 +218,6 @@ if uploaded_file is not None:
         
         # properties from json
         coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
-        st.write(prop_table[16, 3, 0, 0])
 
         # some useful arrays
         const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
