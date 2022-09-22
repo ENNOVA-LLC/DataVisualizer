@@ -1,10 +1,14 @@
-# import pkgs
+#%% import pkgs
+#from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 import pandas as pd
 import json
 import streamlit as st
+#from config import ROOT_DIR, DATA_DIR
+#from pathlib import Path
 
 #%% functions
+@st.cache
 def xlsx_to_json(uploaded_file: str) -> tuple:
     """
     returns 4D data block in json format from input xls file
@@ -61,6 +65,8 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
             df = pd.read_excel(xls, sheet_name=sht_name, header=None)
             prop_TP = df.to_numpy()
             #prop_TP = sht_df.to_numpy()
+            
+            # each iteration is a slice of coord[1], coord[2] at current coord[0]
             for iX1, iX2 in itertools.product(range(nX[1]), range(nX[2])):
                 # split each string and convert to a list of floats
                 prop_str = prop_TP[iX1][iX2]
@@ -70,7 +76,7 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
                 # populate prop_table
                 prop_table[:,i,iX1,iX2] = prop_val
 
-            # next index     
+            # next coord[0] slice     
             i += 1
 
     # close xls file
@@ -87,10 +93,12 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     # create json object from dict
     return fluid, json.dumps(prop_dict)
 
+@st.cache
 def get_data_from_json(prop_json) -> tuple:
     """
-    extract fluid data (Ceq, dens, visco, etc) = f(GOR,P,T) from json file
-
+    extract data from json file to np.array
+    data: fluid properties (Ceq, dens, visco, etc) = f(coord: GOR,P,T)
+    
     arguments:
         prop_json: `.json` file
     returns:
