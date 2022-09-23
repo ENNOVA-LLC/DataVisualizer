@@ -3,6 +3,7 @@
 # from pathlib import Path
 import numpy as np
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 from io import BytesIO
 import plotly_express as px
 import streamlit as st
@@ -85,35 +86,39 @@ def coordinates(axis: str, type_series: str) -> tuple[str]:
     type_idx = get_idx(const_coord, type_series)
     axis_idx = get_idx(coord, axis)
     idx = np.delete(np.array([0, 1, 2]), [axis_idx, type_idx])
-    coord_value = st.sidebar.select_slider(f'Select a {coord[idx][0]}:', coord_range[idx][0])
-    nCoord_idx = get_idx(coord_range[idx][0], coord_value)
+    # coord_value = st.sidebar.select_slider(f'Select a {coord[idx][0]}:', coord_range[idx][0])
+    minimo=coord_range[idx][0][0]
+    maximo=coord_range[idx][0][-1]
+    coord_value = st.sidebar.number_input(f'Enter a {coord[idx][0]}:', min_value=minimo, max_value=maximo)
+    # nCoord_idx = get_idx(coord_range[idx][0], coord_value)
 
     a = (f'{coord_label[0]}: {str(coord_value)} {coord_unit[0]}', 
         f'{coord_label[1]}: {str(coord_value)} {coord_unit[1]}', 
         f'{coord_label[2]}: {str(coord_value)} {coord_unit[2]}')
     titulo = a[idx[0]]
-    return nCoord_idx, titulo
+    return coord_value, titulo #nCoord_idx, titulo
 
-def matrix_for_df_creator(i, j, nCoord_idx, nCoord_array, axis, type_series) -> list:
+def matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series) -> list:
     A = pd.DataFrame(index=coord, columns=const_coord)
-    A.at[coord[0], f'constant {coord_label[2]}'] = [j, nCoord_idx, int(nCoord_array[i])]
-    A.at[coord[0], f'constant {coord_label[1]}'] = [j, int(nCoord_array[i]), nCoord_idx]
-    A.at[coord[2], f'constant {coord_label[0]}'] = [int(nCoord_array[i]), nCoord_idx, j]
-    A.at[coord[2], f'constant {coord_label[1]}'] = [nCoord_idx, int(nCoord_array[i]), j]
-    A.at[coord[1], f'constant {coord_label[0]}'] = [int(nCoord_array[i]), j, nCoord_idx]
-    A.at[coord[1], f'constant {coord_label[2]}'] = [nCoord_idx, j, int(nCoord_array[i])]
+    A.at[coord[0], f'constant {coord_label[1]}'] = [coord_range[0][j], coord_range[1][int(nCoord_array[i])], coord_value]
+    A.at[coord[0], f'constant {coord_label[2]}'] = [coord_range[0][j], coord_value, coord_range[2][int(nCoord_array[i])]]
+    A.at[coord[1], f'constant {coord_label[0]}'] = [coord_range[0][int(nCoord_array[i])], coord_range[1][j], coord_value]
+    A.at[coord[1], f'constant {coord_label[2]}'] = [coord_value, coord_range[1][j], coord_range[2][int(nCoord_array[i])]]
+    A.at[coord[2], f'constant {coord_label[0]}'] = [coord_range[0][int(nCoord_array[i])], coord_value, coord_range[2][j]]
+    A.at[coord[2], f'constant {coord_label[1]}'] = [coord_value, coord_range[1][int(nCoord_array[i])], coord_range[2][j]]
     return A.at[axis, type_series]
 
-def df_creator(axis, type_series, iso, nCoord_array, nCoord_idx, nprop, rango_coord, df) -> pd.DataFrame:
+def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_coord, df) -> pd.DataFrame:
     """
     Creates DF that is used to make the plot and table, reads data from 4D array
     """
+    interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
     for i in range(len(nCoord_array)):
         f = np.empty_like(rango_coord)
         for j in range(len(rango_coord)):
-            nXY = matrix_for_df_creator(i, j, nCoord_idx, nCoord_array, axis, type_series)
-            idx = tuple([nprop] + nXY)
-            f[j] = prop_table[idx]
+            nXY = matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series)
+            pt = np.array([nprop] + nXY)
+            f[j] = interp(pt)
         df[iso[i]] = f
     return df
 
@@ -129,10 +134,11 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
     elif yaxis in coord:
         axis = yaxis
         nprop = get_idx(prop, xaxis)
-
+    
     with cont3:
         iso, nCoord_array = isocurve(type_series)
-        nCoord_idx, titulo = coordinates(axis, type_series)
+        # nCoord_idx, titulo = coordinates(axis, type_series)
+        coord_value, titulo = coordinates(axis, type_series)
 
     idx = get_idx(variables, axis)
     rango_coord = coord_range[idx]
@@ -144,7 +150,7 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
 
     df = pd.DataFrame()
     df[axis] = rango_coord
-    df = df_creator(axis, type_series, iso1, nCoord_array, nCoord_idx, nprop, rango_coord, df)
+    df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, rango_coord, df)
 
     if xaxis in coord:
         fig = px.scatter(df, x=axis, y=iso1, title=titulo, labels={'value': yaxis, 'variable': f'{coord_label[idx2]}:'})
@@ -226,6 +232,7 @@ if uploaded_file is not None:
         variables = np.array(coord + prop)
         coord = np.array(coord)     #coordinate labels + units
         prop = np.array(prop)       #property labels + units
+        prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
 
         st.write(f"# {fluid}")
 
