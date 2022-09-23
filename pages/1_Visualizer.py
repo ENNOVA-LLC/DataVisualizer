@@ -77,40 +77,44 @@ def isocurve(type_series: str) -> tuple[np.array]:
 
 def coordinates(axis: str, type_series: str) -> tuple[str]:
     """
-    Gets index of coordinate selected by slider
-
+    Gets value of single coordinate (number input at bottom of sidebar)
+    
     returns:
-        nCoord_idx: index of coordinate 
+        coord_value: value of coordinate 
         titulo: plot title
     """
     type_idx = get_idx(const_coord, type_series)
     axis_idx = get_idx(coord, axis)
     idx = np.delete(np.array([0, 1, 2]), [axis_idx, type_idx])
-    # coord_value = st.sidebar.select_slider(f'Select a {coord[idx][0]}:', coord_range[idx][0])
     minimo=coord_range[idx][0][0]
     maximo=coord_range[idx][0][-1]
     coord_value = st.sidebar.number_input(f'Enter a {coord[idx][0]}:', min_value=minimo, max_value=maximo)
-    # nCoord_idx = get_idx(coord_range[idx][0], coord_value)
 
     a = (f'{coord_label[0]}: {str(coord_value)} {coord_unit[0]}', 
         f'{coord_label[1]}: {str(coord_value)} {coord_unit[1]}', 
         f'{coord_label[2]}: {str(coord_value)} {coord_unit[2]}')
     titulo = a[idx[0]]
-    return coord_value, titulo #nCoord_idx, titulo
+    return coord_value, titulo
 
 def matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series) -> list:
-    A = pd.DataFrame(index=coord, columns=const_coord)
-    A.at[coord[0], f'constant {coord_label[1]}'] = [coord_range[0][j], coord_range[1][int(nCoord_array[i])], coord_value]
-    A.at[coord[0], f'constant {coord_label[2]}'] = [coord_range[0][j], coord_value, coord_range[2][int(nCoord_array[i])]]
-    A.at[coord[1], f'constant {coord_label[0]}'] = [coord_range[0][int(nCoord_array[i])], coord_range[1][j], coord_value]
-    A.at[coord[1], f'constant {coord_label[2]}'] = [coord_value, coord_range[1][j], coord_range[2][int(nCoord_array[i])]]
-    A.at[coord[2], f'constant {coord_label[0]}'] = [coord_range[0][int(nCoord_array[i])], coord_value, coord_range[2][j]]
-    A.at[coord[2], f'constant {coord_label[1]}'] = [coord_value, coord_range[1][int(nCoord_array[i])], coord_range[2][j]]
-    return A.at[axis, type_series]
+    k = int(nCoord_array[i])
+    if axis == coord[0] and type_series == f'constant {coord_label[1]}':
+        nXY = [coord_range[0][j], coord_range[1][k], coord_value]
+    elif axis == coord[0] and type_series == f'constant {coord_label[2]}':
+        nXY = [coord_range[0][j], coord_value, coord_range[2][k]]
+    elif axis == coord[1] and type_series == f'constant {coord_label[0]}':
+        nXY = [coord_range[0][k], coord_range[1][j], coord_value]
+    elif axis == coord[1] and type_series == f'constant {coord_label[2]}':
+        nXY = [coord_value, coord_range[1][j], coord_range[2][k]]
+    elif axis == coord[2] and type_series == f'constant {coord_label[0]}':
+        nXY = [coord_range[0][k], coord_value, coord_range[2][j]]
+    elif axis == coord[2] and type_series == f'constant {coord_label[1]}':
+        nXY = [coord_value, coord_range[1][k], coord_range[2][j]]
+    return nXY
 
 def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_coord, df) -> pd.DataFrame:
     """
-    Creates DF that is used to make the plot and table, reads data from 4D array
+    Creates DF that is used to make the plot and table, reads data from 4D array and interpolates
     """
     interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
     for i in range(len(nCoord_array)):
@@ -137,11 +141,9 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
     
     with cont3:
         iso, nCoord_array = isocurve(type_series)
-        # nCoord_idx, titulo = coordinates(axis, type_series)
         coord_value, titulo = coordinates(axis, type_series)
 
-    idx = get_idx(variables, axis)
-    rango_coord = coord_range[idx]
+    idx = get_idx(coord, axis)
     idx2 = get_idx(const_coord, type_series)
 
     iso1 = np.empty_like(iso)
@@ -149,8 +151,8 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
         iso1[i] = f'{iso[i]} {coord_unit[idx2]}'
 
     df = pd.DataFrame()
-    df[axis] = rango_coord
-    df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, rango_coord, df)
+    df[axis] = coord_range[idx]
+    df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, coord_range[idx], df)
 
     if xaxis in coord:
         fig = px.scatter(df, x=axis, y=iso1, title=titulo, labels={'value': yaxis, 'variable': f'{coord_label[idx2]}:'})
@@ -167,13 +169,13 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     """
     with cont3:
         iso, nCoord_array = isocurve(type_series)
-        nCoord_idx, titulo = coordinates(Not_fixed, type_series)
+        # nCoord_idx, titulo = coordinates(Not_fixed, type_series)
+        coord_value, titulo = coordinates(Not_fixed, type_series)
 
     nprop1 = get_idx(prop, xaxis)
     nprop2 = get_idx(prop, yaxis)
 
-    idx = get_idx(variables, Not_fixed)
-    rango_coord = coord_range[idx]
+    idx = get_idx(coord, Not_fixed)
     idx2 = get_idx(const_coord, type_series)
 
     iso1 = np.empty_like(iso)
@@ -183,9 +185,9 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
         iso2[i] = f'{yaxis} {iso[i]} {coord_unit[idx2]}'
 
     df = pd.DataFrame()
-    df[Not_fixed] = rango_coord
-    df = df_creator(Not_fixed, type_series, iso1, nCoord_array, nCoord_idx, nprop1, rango_coord, df)
-    df = df_creator(Not_fixed, type_series, iso2, nCoord_array, nCoord_idx, nprop2, rango_coord, df)
+    df[Not_fixed] = coord_range[idx]
+    df = df_creator(Not_fixed, type_series, iso1, nCoord_array, coord_value, nprop1, coord_range[idx], df)
+    df = df_creator(Not_fixed, type_series, iso2, nCoord_array, coord_value, nprop2, coord_range[idx], df)
                     
     fig = px.scatter(title=titulo)
     fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:')
