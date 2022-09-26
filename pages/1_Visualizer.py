@@ -199,7 +199,8 @@ maincont = st.container()
 cont1 = st.container()
 cont2 = st.container()
 cont3 = st.container()
-tab1, tab2, tab3 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type"])
+with cont1:
+    tab1, tab2, tab3 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type"])
 
 # set file path 
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
@@ -232,9 +233,8 @@ if uploaded_file is not None:
         tab4, tab5 = st.tabs(["Plot", "Table"])
 
     # Sidebar filters
-    with cont1:
-        tab2.header('Choose axes:')
-        xaxis = tab2.selectbox('Select x-axis:', variables)
+    tab2.header('Choose axes:')
+    xaxis = tab2.selectbox('Select x-axis:', variables)
     
     # choose what to display on main page from user selection
     if xaxis in coord:
@@ -255,4 +255,3 @@ if uploaded_file is not None:
     st.sidebar.markdown("#")
 else:
     st.warning('Please upload a fluid file to begin')
-# %%

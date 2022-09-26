@@ -1,5 +1,5 @@
 import streamlit as st
-from config import DATA_DIR
+import numpy as np
 
 st.set_page_config(
     page_title="Hello",
@@ -23,3 +23,25 @@ st.markdown(
     - To get in touch [click here](https://ennova.us/contact/)
     """
     )
+
+container = st.sidebar.container()
+col1, col2 = st.sidebar.columns(2)
+
+if 'count' not in st.session_state:
+	st.session_state.count = 0
+
+with col1:
+    new_input = st.button("Add input box")
+
+with col2:
+    delete_input = st.button("Delete input box")
+
+if new_input:
+	st.session_state.count += 1
+elif delete_input and st.session_state.count > 0:
+    st.session_state.count -= 1
+
+with container:
+    x = [st.number_input('Enter value', min_value=1.0, max_value=5.0, key=i) for i in range(st.session_state.count)]
+x = np.array(x)
+# st.write(x)
