@@ -67,6 +67,7 @@ def isocurve(type_series: str) -> tuple[np.array]:
     minimo=coord_range[idx][0]
     maximo=coord_range[idx][-1]
 
+    # add/delete buttons
     cont2 = tab3.container()
     col1, col2 = tab3.columns(2)
     if 'count' not in st.session_state:
@@ -81,7 +82,7 @@ def isocurve(type_series: str) -> tuple[np.array]:
         st.session_state.count -= 1
 
     with cont2:
-        nCoord_array = [st.number_input(f'Enter {coord[idx]}:', min_value=minimo, max_value=maximo, key=i) 
+        nCoord_array = [st.number_input(f'Enter a {coord[idx]}:', min_value=minimo, max_value=maximo, key=i) 
                         for i in range(st.session_state.count)]
 
     return np.array(nCoord_array)
@@ -268,3 +269,4 @@ if uploaded_file is not None:
     st.sidebar.markdown("#")
 else:
     st.warning('Please upload a fluid file to begin')
+    st.session_state.count = 0
