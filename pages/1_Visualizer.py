@@ -50,7 +50,7 @@ def convert_df(df: pd.DataFrame, to_type: str):
         writer.save()
         return output.getvalue()
 
-def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
+def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series) -> np.array:
     tab4.plotly_chart(fig)
     with tab5:
         st.dataframe(df.copy())
@@ -61,16 +61,30 @@ def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
 def isocurve(type_series: str) -> tuple[np.array]:
     """
     returns:
-        iso: array of strings of the selected isocurves
-        nCoord_array: array of indices of the multiple isocurves
+        nCoord_array: array of values of the multiple isocurves
     """
     idx = get_idx(const_coord, type_series)
-    iso = tab3.multiselect(f'Choose from the available {coord[idx]}:', coord_range[idx])
-    nCoord_array = [get_idx(coord_range[idx], iso[i]) for i in range(len(iso))]
+    minimo=coord_range[idx][0]
+    maximo=coord_range[idx][-1]
 
-    iso = np.array(iso)
-    iso = iso.astype('str')
-    return iso, np.array(nCoord_array)
+    cont2 = tab3.container()
+    col1, col2 = tab3.columns(2)
+    if 'count' not in st.session_state:
+        st.session_state.count = 0
+
+    new_input = col1.button("Add input box")
+    delete_input = col2.button("Delete input box")
+
+    if new_input:
+        st.session_state.count += 1
+    elif delete_input and st.session_state.count > 0:
+        st.session_state.count -= 1
+
+    with cont2:
+        nCoord_array = [st.number_input(f'Enter {coord[idx]}:', min_value=minimo, max_value=maximo, key=i) 
+                        for i in range(st.session_state.count)]
+
+    return np.array(nCoord_array)
 
 def coordinates(axis: str, type_series: str) -> tuple[str]:
     """
@@ -94,19 +108,18 @@ def coordinates(axis: str, type_series: str) -> tuple[str]:
     return coord_value, titulo
 
 def matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series) -> list:
-    k = int(nCoord_array[i])
     if axis == coord[0] and type_series == f'constant {coord_label[1]}':
-        nXY = [coord_range[0][j], coord_range[1][k], coord_value]
+        nXY = [coord_range[0][j], nCoord_array[i], coord_value]
     elif axis == coord[0] and type_series == f'constant {coord_label[2]}':
-        nXY = [coord_range[0][j], coord_value, coord_range[2][k]]
+        nXY = [coord_range[0][j], coord_value, nCoord_array[i]]
     elif axis == coord[1] and type_series == f'constant {coord_label[0]}':
-        nXY = [coord_range[0][k], coord_range[1][j], coord_value]
+        nXY = [nCoord_array[i], coord_range[1][j], coord_value]
     elif axis == coord[1] and type_series == f'constant {coord_label[2]}':
-        nXY = [coord_value, coord_range[1][j], coord_range[2][k]]
+        nXY = [coord_value, coord_range[1][j], nCoord_array[i]]
     elif axis == coord[2] and type_series == f'constant {coord_label[0]}':
-        nXY = [coord_range[0][k], coord_value, coord_range[2][j]]
+        nXY = [nCoord_array[i], coord_value, coord_range[2][j]]
     elif axis == coord[2] and type_series == f'constant {coord_label[1]}':
-        nXY = [coord_value, coord_range[1][k], coord_range[2][j]]
+        nXY = [coord_value, nCoord_array[i], coord_range[2][j]]
     return nXY
 
 def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_coord, df) -> pd.DataFrame:
@@ -136,15 +149,16 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
         axis = yaxis
         nprop = get_idx(prop, xaxis)
     
-    iso, nCoord_array = isocurve(type_series)
+    nCoord_array = isocurve(type_series)
     coord_value, titulo = coordinates(axis, type_series)
 
     idx = get_idx(coord, axis)
     idx2 = get_idx(const_coord, type_series)
 
-    iso1 = np.empty_like(iso)
+    nCoord_array_str = nCoord_array.astype('str')
+    iso1 = np.empty_like(nCoord_array_str)
     for i in range(len(nCoord_array)):
-        iso1[i] = f'{iso[i]} {coord_unit[idx2]}'
+        iso1[i] = f'{nCoord_array_str[i]} {coord_unit[idx2]}'
 
     df = pd.DataFrame()
     df[axis] = coord_range[idx]
@@ -163,7 +177,7 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     returns:
         plot, table, file
     """
-    iso, nCoord_array = isocurve(type_series)
+    nCoord_array = isocurve(type_series)
     coord_value, titulo = coordinates(Not_fixed, type_series)
 
     nprop1 = get_idx(prop, xaxis)
@@ -172,11 +186,12 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     idx = get_idx(coord, Not_fixed)
     idx2 = get_idx(const_coord, type_series)
 
-    iso1 = np.empty_like(iso)
-    iso2 = np.empty_like(iso)
+    nCoord_array_str = nCoord_array.astype('str')
+    iso1 = np.empty_like(nCoord_array_str)
+    iso2 = np.empty_like(nCoord_array_str)
     for i in range(len(nCoord_array)):
-        iso1[i] = f'{xaxis} {iso[i]} {coord_unit[idx2]}'
-        iso2[i] = f'{yaxis} {iso[i]} {coord_unit[idx2]}'
+        iso1[i] = f'{xaxis} {nCoord_array_str[i]} {coord_unit[idx2]}'
+        iso2[i] = f'{yaxis} {nCoord_array_str[i]} {coord_unit[idx2]}'
 
     df = pd.DataFrame()
     df[Not_fixed] = coord_range[idx]
@@ -186,7 +201,7 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     fig = px.scatter(title=titulo)
     fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:')
     for i in range(len(nCoord_array)):
-        fig.add_scatter(x=df[iso1[i]], y=df[iso2[i]], name=iso[i], mode='markers')
+        fig.add_scatter(x=df[iso1[i]], y=df[iso2[i]], name=nCoord_array_str[i], mode='markers')
 
     interruptor(df, fig, xaxis, yaxis, type_series)
 
@@ -197,8 +212,6 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
 # containers to structure page
 maincont = st.container()
 cont1 = st.container()
-cont2 = st.container()
-cont3 = st.container()
 with cont1:
     tab1, tab2, tab3 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type"])
 
