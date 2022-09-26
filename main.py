@@ -1,5 +1,4 @@
 import streamlit as st
-from config import DATA_DIR
 
 st.set_page_config(
     page_title="Hello",

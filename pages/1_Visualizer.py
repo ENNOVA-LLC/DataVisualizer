@@ -3,6 +3,7 @@
 # from pathlib import Path
 import numpy as np
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 from io import BytesIO
 import plotly_express as px
 import streamlit as st
@@ -33,7 +34,7 @@ def series_options(axis: str) -> st.radio:
     const_coord_dict = {coord[0]: (f'constant {coord_label[1]}', f'constant {coord_label[2]}'), 
                     coord[1]: (f'constant {coord_label[0]}', f'constant {coord_label[2]}'), 
                     coord[2]: (f'constant {coord_label[0]}', f'constant {coord_label[1]}')}
-    return st.sidebar.radio('Choose the type of the series:', const_coord_dict[axis])
+    return tab3.radio('Choose the type of the series:', const_coord_dict[axis])
 
 # DataFrame converter: DF -> csv/excel/json
 # cjsisco note: should be able to output in different formats
@@ -49,71 +50,90 @@ def convert_df(df: pd.DataFrame, to_type: str):
         writer.save()
         return output.getvalue()
 
-def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
-    with cont4:
-        switch = st.radio('Switch between plot and table:', ('Plot', 'Table'), horizontal=True)
-        if switch == 'Plot':
-            st.plotly_chart(fig)
-        else:
-            st.dataframe(df)
-        to_type = st.radio('Select the data format:', ('csv', 'xlsx', 'json'))
+def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series) -> np.array:
+    tab4.plotly_chart(fig)
+    with tab5:
+        st.dataframe(df.copy())
+        to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
         nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
         st.download_button(label="Download data", data=convert_df(df, to_type), file_name=nombre)
 
 def isocurve(type_series: str) -> tuple[np.array]:
     """
     returns:
-        iso: array of strings of the selected isocurves
-        nCoord_array: array of indices of the multiple isocurves
+        nCoord_array: array of values of the multiple isocurves
     """
     idx = get_idx(const_coord, type_series)
-    iso = st.sidebar.multiselect(f'Choose from the available {coord[idx]}:', coord_range[idx])
-    nCoord_array = [get_idx(coord_range[idx], iso[i]) for i in range(len(iso))]
+    minimo=coord_range[idx][0]
+    maximo=coord_range[idx][-1]
 
-    iso = np.array(iso)
-    iso = iso.astype('str')
-    return iso, np.array(nCoord_array)
+    # add/delete buttons
+    cont2 = tab3.container()
+    col1, col2 = tab3.columns(2)
+    if 'count' not in st.session_state:
+        st.session_state.count = 0
+
+    new_input = col1.button("Add input box")
+    delete_input = col2.button("Delete input box")
+
+    if new_input:
+        st.session_state.count += 1
+    elif delete_input and st.session_state.count > 0:
+        st.session_state.count -= 1
+
+    with cont2:
+        nCoord_array = [st.number_input(f'Enter a {coord[idx]}:', min_value=minimo, max_value=maximo, key=i) 
+                        for i in range(st.session_state.count)]
+
+    return np.array(nCoord_array)
 
 def coordinates(axis: str, type_series: str) -> tuple[str]:
     """
-    Gets index of coordinate selected by slider
+    Gets value of single coordinate (number input at bottom of sidebar)
 
     returns:
-        nCoord_idx: index of coordinate 
+        coord_value: value of coordinate 
         titulo: plot title
     """
     type_idx = get_idx(const_coord, type_series)
     axis_idx = get_idx(coord, axis)
     idx = np.delete(np.array([0, 1, 2]), [axis_idx, type_idx])
-    coord_value = st.sidebar.select_slider(f'Select a {coord[idx][0]}:', coord_range[idx][0])
-    nCoord_idx = get_idx(coord_range[idx][0], coord_value)
+    minimo=coord_range[idx][0][0]
+    maximo=coord_range[idx][0][-1]
+    coord_value = tab3.number_input(f'Enter a {coord[idx][0]}:', min_value=minimo, max_value=maximo)
 
     a = (f'{coord_label[0]}: {str(coord_value)} {coord_unit[0]}', 
         f'{coord_label[1]}: {str(coord_value)} {coord_unit[1]}', 
         f'{coord_label[2]}: {str(coord_value)} {coord_unit[2]}')
     titulo = a[idx[0]]
-    return nCoord_idx, titulo
+    return coord_value, titulo
 
-def matrix_for_df_creator(i, j, nCoord_idx, nCoord_array, axis, type_series) -> list:
-    A = pd.DataFrame(index=coord, columns=const_coord)
-    A.at[coord[0], f'constant {coord_label[2]}'] = [j, nCoord_idx, int(nCoord_array[i])]
-    A.at[coord[0], f'constant {coord_label[1]}'] = [j, int(nCoord_array[i]), nCoord_idx]
-    A.at[coord[2], f'constant {coord_label[0]}'] = [int(nCoord_array[i]), nCoord_idx, j]
-    A.at[coord[2], f'constant {coord_label[1]}'] = [nCoord_idx, int(nCoord_array[i]), j]
-    A.at[coord[1], f'constant {coord_label[0]}'] = [int(nCoord_array[i]), j, nCoord_idx]
-    A.at[coord[1], f'constant {coord_label[2]}'] = [nCoord_idx, j, int(nCoord_array[i])]
-    return A.at[axis, type_series]
+def matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series) -> list:
+    if axis == coord[0] and type_series == f'constant {coord_label[1]}':
+        nXY = [coord_range[0][j], nCoord_array[i], coord_value]
+    elif axis == coord[0] and type_series == f'constant {coord_label[2]}':
+        nXY = [coord_range[0][j], coord_value, nCoord_array[i]]
+    elif axis == coord[1] and type_series == f'constant {coord_label[0]}':
+        nXY = [nCoord_array[i], coord_range[1][j], coord_value]
+    elif axis == coord[1] and type_series == f'constant {coord_label[2]}':
+        nXY = [coord_value, coord_range[1][j], nCoord_array[i]]
+    elif axis == coord[2] and type_series == f'constant {coord_label[0]}':
+        nXY = [nCoord_array[i], coord_value, coord_range[2][j]]
+    elif axis == coord[2] and type_series == f'constant {coord_label[1]}':
+        nXY = [coord_value, nCoord_array[i], coord_range[2][j]]
+    return nXY
 
-def df_creator(axis, type_series, iso, nCoord_array, nCoord_idx, nprop, rango_coord, df) -> pd.DataFrame:
+def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_coord, df) -> pd.DataFrame:
     """
-    Creates DF that is used to make the plot and table, reads data from 4D array
+    Creates DF that is used to make the plot and table, reads data from 4D array and interpolates
     """
+    interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
     for i in range(len(nCoord_array)):
         f = np.empty_like(rango_coord)
         for j in range(len(rango_coord)):
-            nXY = matrix_for_df_creator(i, j, nCoord_idx, nCoord_array, axis, type_series)
-            idx = tuple([nprop] + nXY)
-            f[j] = prop_table[idx]
+            nXY = matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series)
+            pt = np.array([nprop] + nXY)
+            f[j] = interp(pt)
         df[iso[i]] = f
     return df
 
@@ -129,22 +149,21 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
     elif yaxis in coord:
         axis = yaxis
         nprop = get_idx(prop, xaxis)
+    
+    nCoord_array = isocurve(type_series)
+    coord_value, titulo = coordinates(axis, type_series)
 
-    with cont3:
-        iso, nCoord_array = isocurve(type_series)
-        nCoord_idx, titulo = coordinates(axis, type_series)
-
-    idx = get_idx(variables, axis)
-    rango_coord = coord_range[idx]
+    idx = get_idx(coord, axis)
     idx2 = get_idx(const_coord, type_series)
 
-    iso1 = np.empty_like(iso)
+    nCoord_array_str = nCoord_array.astype('str')
+    iso1 = np.empty_like(nCoord_array_str)
     for i in range(len(nCoord_array)):
-        iso1[i] = f'{iso[i]} {coord_unit[idx2]}'
+        iso1[i] = f'{nCoord_array_str[i]} {coord_unit[idx2]}'
 
     df = pd.DataFrame()
-    df[axis] = rango_coord
-    df = df_creator(axis, type_series, iso1, nCoord_array, nCoord_idx, nprop, rango_coord, df)
+    df[axis] = coord_range[idx]
+    df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, coord_range[idx], df)
 
     if xaxis in coord:
         fig = px.scatter(df, x=axis, y=iso1, title=titulo, labels={'value': yaxis, 'variable': f'{coord_label[idx2]}:'})
@@ -159,32 +178,31 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     returns:
         plot, table, file
     """
-    with cont3:
-        iso, nCoord_array = isocurve(type_series)
-        nCoord_idx, titulo = coordinates(Not_fixed, type_series)
+    nCoord_array = isocurve(type_series)
+    coord_value, titulo = coordinates(Not_fixed, type_series)
 
     nprop1 = get_idx(prop, xaxis)
     nprop2 = get_idx(prop, yaxis)
 
-    idx = get_idx(variables, Not_fixed)
-    rango_coord = coord_range[idx]
+    idx = get_idx(coord, Not_fixed)
     idx2 = get_idx(const_coord, type_series)
 
-    iso1 = np.empty_like(iso)
-    iso2 = np.empty_like(iso)
+    nCoord_array_str = nCoord_array.astype('str')
+    iso1 = np.empty_like(nCoord_array_str)
+    iso2 = np.empty_like(nCoord_array_str)
     for i in range(len(nCoord_array)):
-        iso1[i] = f'{xaxis} {iso[i]} {coord_unit[idx2]}'
-        iso2[i] = f'{yaxis} {iso[i]} {coord_unit[idx2]}'
+        iso1[i] = f'{xaxis} {nCoord_array_str[i]} {coord_unit[idx2]}'
+        iso2[i] = f'{yaxis} {nCoord_array_str[i]} {coord_unit[idx2]}'
 
     df = pd.DataFrame()
-    df[Not_fixed] = rango_coord
-    df = df_creator(Not_fixed, type_series, iso1, nCoord_array, nCoord_idx, nprop1, rango_coord, df)
-    df = df_creator(Not_fixed, type_series, iso2, nCoord_array, nCoord_idx, nprop2, rango_coord, df)
+    df[Not_fixed] = coord_range[idx]
+    df = df_creator(Not_fixed, type_series, iso1, nCoord_array, coord_value, nprop1, coord_range[idx], df)
+    df = df_creator(Not_fixed, type_series, iso2, nCoord_array, coord_value, nprop2, coord_range[idx], df)
                     
     fig = px.scatter(title=titulo)
     fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:')
     for i in range(len(nCoord_array)):
-        fig.add_scatter(x=df[iso1[i]], y=df[iso2[i]], name=iso[i], mode='markers')
+        fig.add_scatter(x=df[iso1[i]], y=df[iso2[i]], name=nCoord_array_str[i], mode='markers')
 
     interruptor(df, fig, xaxis, yaxis, type_series)
 
@@ -192,75 +210,63 @@ def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
 
 
 #%%
-# containers to separate content and allow dynamic selection
+# containers to structure page
 maincont = st.container()
 cont1 = st.container()
-cont2 = st.container()
-cont3 = st.container()
-cont4 = st.container()
+with cont1:
+    tab1, tab2, tab3 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type"])
 
 # set file path 
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
 
 # File uploader
-uploaded_file = st.sidebar.file_uploader('Upload fluid file:', type = ('xlsx', 'json'))
+uploaded_file = tab1.file_uploader('Upload fluid file:', type = ('xlsx', 'json'))
 
 if uploaded_file is not None:
+    if uploaded_file.type == 'application/json':
+        fluid = uploaded_file.name.replace('.json', '')
+        fluid = fluid.replace('lookup_', '')
+        prop_json = uploaded_file
+    elif uploaded_file.type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        fluid, prop_json = fc.xlsx_to_json(uploaded_file)
+    
+    # properties from json
+    coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
+
+    # some useful arrays
+    const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
+    coord = [f"{coord_label[i]} [{coord_unit[i]}]" for i in range(len(coord_label))]    
+    prop = [f"{prop_label[i]} [{prop_unit[i]}]" for i in range(len(prop_label))]        
+    variables = np.array(coord + prop)
+    coord = np.array(coord)     #coordinate labels + units
+    prop = np.array(prop)       #property labels + units
+    prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
+
+    maincont.header(fluid)
     with maincont:
-        if uploaded_file.type == 'application/json':
-            # st.success("json file successfully uploaded")
-            fluid = uploaded_file.name.replace('.json', '')
-            fluid = fluid.replace('lookup_', '')
-            prop_json = uploaded_file
-        elif uploaded_file.type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-            # st.success("xlsx file successfully uploaded")
-            fluid, prop_json = fc.xlsx_to_json(uploaded_file)
-        
-        # properties from json
-        coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
+        tab4, tab5 = st.tabs(["Plot", "Table"])
 
-        # some useful arrays
-        const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
-        coord = [f"{coord_label[i]} [{coord_unit[i]}]" for i in range(len(coord_label))]    
-        prop = [f"{prop_label[i]} [{prop_unit[i]}]" for i in range(len(prop_label))]        
-        variables = np.array(coord + prop)
-        coord = np.array(coord)     #coordinate labels + units
-        prop = np.array(prop)       #property labels + units
+    # Sidebar filters
+    tab2.header('Choose axes:')
+    xaxis = tab2.selectbox('Select x-axis:', variables)
+    
+    # choose what to display on main page from user selection
+    if xaxis in coord:
+        yaxis = tab2.selectbox('Select y-axis:', prop)    
+        type_series = series_options(xaxis)
+        coord_on_axis(xaxis, yaxis, type_series)
+    else:           #xaxis == Property
+        yaxis = tab2.selectbox('Select y-axis:', variables)
 
-        st.write(f"# {fluid}")
+        if yaxis in coord: 
+            type_series = series_options(yaxis)
+            coord_on_axis(xaxis, yaxis, type_series) 
+        else:       #yaxis == Property 
+            Not_fixed = tab2.selectbox('Which parameter should vary?', coord)
+            type_series = series_options(Not_fixed)
+            prop_vs_prop(xaxis, yaxis, type_series, Not_fixed) 
 
-        # Sidebar filters
-        st.sidebar.header('Choose axes:')
-        xaxis = st.sidebar.selectbox('Select x-axis:', variables)
-        
-        # choose what to display on main page from user selection
-        if xaxis in coord:
-            with cont1:
-                yaxis = st.sidebar.selectbox('Select y-axis:', prop)
-                
-            with cont2:    
-                type_series = series_options(xaxis)
-
-            coord_on_axis(xaxis, yaxis, type_series)
-        else:           #xaxis == Property
-            with cont1:
-                yaxis = st.sidebar.selectbox('Select y-axis:', variables)
-
-            if yaxis in coord: 
-                with cont2:
-                    type_series = series_options(yaxis)
-
-                coord_on_axis(xaxis, yaxis, type_series) 
-            else:       #yaxis == Property 
-                with cont1:
-                    Not_fixed = st.sidebar.selectbox('Which parameter should vary?', coord)
-
-                with cont2:
-                    type_series = series_options(Not_fixed)
-                    
-                prop_vs_prop(xaxis, yaxis, type_series, Not_fixed) 
-
-        st.sidebar.markdown("#")
+    st.sidebar.markdown("#")
 else:
-    with maincont:
-        st.warning('Please upload a fluid file to begin')
+    st.warning('Please upload a fluid file to begin')
+    st.session_state.count = 0
