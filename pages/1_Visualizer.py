@@ -45,7 +45,7 @@ def convert_df(df: pd.DataFrame, to_type: str):
         return df.to_json(orient='index').encode('utf-8')   
     elif to_type == 'xlsx':
         output = BytesIO()
-        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        writer = pd.ExcelWriter(output)
         df.to_excel(writer, index=False)
         writer.save()
         return output.getvalue()
