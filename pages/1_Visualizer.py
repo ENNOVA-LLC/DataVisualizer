@@ -3,6 +3,7 @@
 # from pathlib import Path
 import numpy as np
 import pandas as pd
+import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
 from io import BytesIO
 import plotly_express as px
@@ -137,7 +138,7 @@ def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_c
         df[iso[i]] = f
     return df
 
-def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
+def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     """
     This function is called when the xaxis or the yaxis is a coordinate (GOR, T, P)
     returns:
@@ -172,7 +173,7 @@ def coord_on_axis(xaxis: str, yaxis: str, type_series: str):
 
     interruptor(df, fig, xaxis, yaxis, type_series)
 
-def prop_vs_prop(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
+def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     """
     This function is called when both the xaxis and the yaxis are a property
     returns:
@@ -237,9 +238,9 @@ if uploaded_file is not None:
     const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
     coord = [f"{coord_label[i]} [{coord_unit[i]}]" for i in range(len(coord_label))]    
     prop = [f"{prop_label[i]} [{prop_unit[i]}]" for i in range(len(prop_label))]        
-    variables = np.array(coord + prop)
-    coord = np.array(coord)     #coordinate labels + units
-    prop = np.array(prop)       #property labels + units
+    variables = np.array(coord + prop)  #coordinate and property labels + units
+    coord = np.array(coord)             #coordinate labels + units
+    prop = np.array(prop)               #property labels + units
     prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
 
     maincont.header(fluid)
@@ -249,24 +250,60 @@ if uploaded_file is not None:
     # Sidebar filters
     tab2.header('Choose axes:')
     xaxis = tab2.selectbox('Select x-axis:', variables)
-    
+    yaxis = tab2.selectbox('Select y-axis:', variables) 
+
     # choose what to display on main page from user selection
-    if xaxis in coord:
-        yaxis = tab2.selectbox('Select y-axis:', prop)    
+    if xaxis in coord and yaxis in coord and xaxis == yaxis:
+        st.warning("Choose another combination of axes")
+    elif xaxis in coord and yaxis in coord:
+        Fixed = tab3.selectbox('Choose a property for the color plot', prop)
+        nprop = get_idx(prop, Fixed)
+        xidx = get_idx(coord, xaxis)
+        yidx = get_idx(coord, yaxis)
+        zidx = np.delete(np.array([0, 1, 2]), [xidx, yidx])
+        minimo=coord_range[zidx][0][0]
+        maximo=coord_range[zidx][0][-1]
+        z_value = tab3.number_input(f'Choose a {coord[zidx][0]}:', min_value=minimo, max_value=maximo)
+        interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
+        Data = np.empty((len(coord_range[xidx]), len(coord_range[yidx])), dtype='float64')
+        for i in range(len(coord_range[xidx])):
+            for j in range(len(coord_range[yidx])):
+                if xaxis == coord[0] and yaxis == coord[1]:
+                    nXY = [coord_range[0][i], coord_range[1][j], z_value]
+                elif xaxis == coord[0] and yaxis == coord[2]:
+                    nXY = [coord_range[0][i], z_value, coord_range[2][j]]
+                elif xaxis == coord[1] and yaxis == coord[0]:
+                    nXY = [coord_range[0][j], coord_range[1][i], z_value]
+                elif xaxis == coord[1] and yaxis == coord[2]:
+                    nXY = [z_value, coord_range[1][i], coord_range[2][j]]
+                elif xaxis == coord[2] and yaxis == coord[0]:
+                    nXY = [coord_range[0][j], z_value, coord_range[2][i]]
+                elif xaxis == coord[2] and yaxis == coord[1]:
+                    nXY = [z_value, coord_range[1][j], coord_range[2][i]]
+
+                pt = np.array([nprop] + nXY)
+                Data[i, j] = interp(pt)
+
+        Data = xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
+        fig = px.imshow(Data, labels={'color': Fixed})
+        tab4.plotly_chart(fig)
+        with tab5:
+            st.table(Data.copy())
+            # to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
+            # nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
+            # st.download_button(label="Download data", data=xarray_extras.csv.to_csv(Data), file_name=nombre)
+    elif xaxis in coord and yaxis in prop:   
         type_series = series_options(xaxis)
-        coord_on_axis(xaxis, yaxis, type_series)
-    else:           #xaxis == Property
-        yaxis = tab2.selectbox('Select y-axis:', variables)
+        coord_on_one_axis(xaxis, yaxis, type_series)
+    elif xaxis in prop and yaxis in coord:
+        type_series = series_options(yaxis)
+        coord_on_one_axis(xaxis, yaxis, type_series) 
+    elif xaxis in prop and yaxis in prop:
+        Not_fixed = tab2.selectbox('Which parameter should vary?', coord)
+        type_series = series_options(Not_fixed)
+        prop_on_both_axes(xaxis, yaxis, type_series, Not_fixed) 
 
-        if yaxis in coord: 
-            type_series = series_options(yaxis)
-            coord_on_axis(xaxis, yaxis, type_series) 
-        else:       #yaxis == Property 
-            Not_fixed = tab2.selectbox('Which parameter should vary?', coord)
-            type_series = series_options(Not_fixed)
-            prop_vs_prop(xaxis, yaxis, type_series, Not_fixed) 
-
-    st.sidebar.markdown("#")
+    st.sidebar.markdown("#")    #empty space at the bottom of sidebar
 else:
     st.warning('Please upload a fluid file to begin')
     st.session_state.count = 0
