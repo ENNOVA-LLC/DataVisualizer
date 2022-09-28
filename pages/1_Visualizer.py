@@ -28,17 +28,7 @@ def get_idx(X: np.array, a: str) -> str:
     """
     return np.where(X == a)[0][0]
 
-def series_options(axis: str) -> st.radio:
-    """
-    Dropdown menu of the types of series available
-    """
-    const_coord_dict = {coord[0]: (f'constant {coord_label[1]}', f'constant {coord_label[2]}'), 
-                    coord[1]: (f'constant {coord_label[0]}', f'constant {coord_label[2]}'), 
-                    coord[2]: (f'constant {coord_label[0]}', f'constant {coord_label[1]}')}
-    return tab3.radio('Choose the type of the series:', const_coord_dict[axis])
-
 # DataFrame converter: DF -> csv/excel/json
-# cjsisco note: should be able to output in different formats
 def convert_df(df: pd.DataFrame, to_type: str):
     if to_type == 'csv':
         return df.to_csv().encode('utf-8') 
@@ -47,11 +37,11 @@ def convert_df(df: pd.DataFrame, to_type: str):
     elif to_type == 'xlsx':
         output = BytesIO()
         writer = pd.ExcelWriter(output)
-        df.to_excel(writer, index=False)
+        df.to_excel(writer)
         writer.save()
         return output.getvalue()
 
-def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series) -> np.array:
+def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
     tab4.plotly_chart(fig)
     with tab5:
         st.dataframe(df.copy())
@@ -98,15 +88,15 @@ def coordinates(axis: str, type_series: str) -> tuple[str]:
     """
     type_idx = get_idx(const_coord, type_series)
     axis_idx = get_idx(coord, axis)
-    idx = np.delete(np.array([0, 1, 2]), [axis_idx, type_idx])
-    minimo=coord_range[idx][0][0]
-    maximo=coord_range[idx][0][-1]
-    coord_value = tab3.number_input(f'Enter a {coord[idx][0]}:', min_value=minimo, max_value=maximo)
+    idx = np.delete(np.array([0, 1, 2]), [axis_idx, type_idx])[0]
+    minimo=coord_range[idx][0]
+    maximo=coord_range[idx][-1]
+    coord_value = tab3.number_input(f'Enter a {coord[idx]}:', min_value=minimo, max_value=maximo)
 
     a = (f'{coord_label[0]}: {str(coord_value)} {coord_unit[0]}', 
         f'{coord_label[1]}: {str(coord_value)} {coord_unit[1]}', 
         f'{coord_label[2]}: {str(coord_value)} {coord_unit[2]}')
-    titulo = a[idx[0]]
+    titulo = a[idx]
     return coord_value, titulo
 
 def matrix_for_df_creator(i, j, coord_value, nCoord_array, axis, type_series) -> list:
@@ -128,7 +118,6 @@ def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_c
     """
     Creates DF that is used to make the plot and table, reads data from 4D array and interpolates
     """
-    interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
     for i in range(len(nCoord_array)):
         f = np.empty_like(rango_coord)
         for j in range(len(rango_coord)):
@@ -137,6 +126,39 @@ def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_c
             f[j] = interp(pt)
         df[iso[i]] = f
     return df
+
+def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value):
+    Data = np.empty((len(coord_range[xidx]), len(coord_range[yidx])), dtype='float64')
+    for i in range(len(coord_range[xidx])):
+        for j in range(len(coord_range[yidx])):
+            if xaxis == coord[0] and yaxis == coord[1]:
+                nXY = [coord_range[0][i], coord_range[1][j], z_value]
+            elif xaxis == coord[0] and yaxis == coord[2]:
+                nXY = [coord_range[0][i], z_value, coord_range[2][j]]
+            elif xaxis == coord[1] and yaxis == coord[0]:
+                nXY = [coord_range[0][j], coord_range[1][i], z_value]
+            elif xaxis == coord[1] and yaxis == coord[2]:
+                nXY = [z_value, coord_range[1][i], coord_range[2][j]]
+            elif xaxis == coord[2] and yaxis == coord[0]:
+                nXY = [coord_range[0][j], z_value, coord_range[2][i]]
+            elif xaxis == coord[2] and yaxis == coord[1]:
+                nXY = [z_value, coord_range[1][j], coord_range[2][i]]
+            pt = np.array([nprop] + nXY)
+            Data[i, j] = interp(pt)
+    Data = xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
+    return Data
+
+def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2):
+    fig = px.scatter(title=titulo)
+    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:')
+    for i in range(len(nCoord_array_str)):
+        if xaxis in coord:
+            fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers')
+        elif yaxis in coord:
+            fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_array_str[i], mode='markers')
+        else:
+            fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers')
+    return fig
 
 def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     """
@@ -158,20 +180,32 @@ def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     idx2 = get_idx(const_coord, type_series)
 
     nCoord_array_str = nCoord_array.astype('str')
-    iso1 = np.empty_like(nCoord_array_str)
-    for i in range(len(nCoord_array)):
-        iso1[i] = f'{nCoord_array_str[i]} {coord_unit[idx2]}'
+    iso1 = [f'{nCoord_array_str[i]} {coord_unit[idx2]}' for i in range(len(nCoord_array))]
+    iso1 = np.array(iso1)
 
     df = pd.DataFrame()
     df[axis] = coord_range[idx]
     df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, coord_range[idx], df)
 
-    if xaxis in coord:
-        fig = px.scatter(df, x=axis, y=iso1, title=titulo, labels={'value': yaxis, 'variable': f'{coord_label[idx2]}:'})
-    elif yaxis in coord:
-        fig = px.scatter(df, x=iso1, y=axis, title=titulo, labels={'value': xaxis, 'variable': f'{coord_label[idx2]}:'})
-
+    fig = fig_creator(xaxis, yaxis, axis, iso1, titulo, nCoord_array_str, df, idx2)     
     interruptor(df, fig, xaxis, yaxis, type_series)
+
+def coord_on_both_axes(xaxis, yaxis, Fixed):
+    nprop = get_idx(prop, Fixed)
+    xidx = get_idx(coord, xaxis)
+    yidx = get_idx(coord, yaxis)
+
+    zidx = np.delete(np.array([0, 1, 2]), [xidx, yidx])[0]
+    minimo=coord_range[zidx][0]
+    maximo=coord_range[zidx][-1]
+    z_value = tab3.number_input(f'Choose a {coord[zidx]}:', min_value=minimo, max_value=maximo)
+
+    Data = xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
+    fig = px.imshow(Data.T, labels={'color': Fixed})
+    fig.update_layout(title=f'{coord[zidx]}: {z_value}')
+    df = Data.to_pandas()
+
+    interruptor(df, fig, xaxis, yaxis, Fixed)
 
 def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     """
@@ -189,22 +223,17 @@ def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     idx2 = get_idx(const_coord, type_series)
 
     nCoord_array_str = nCoord_array.astype('str')
-    iso1 = np.empty_like(nCoord_array_str)
-    iso2 = np.empty_like(nCoord_array_str)
-    for i in range(len(nCoord_array)):
-        iso1[i] = f'{xaxis} {nCoord_array_str[i]} {coord_unit[idx2]}'
-        iso2[i] = f'{yaxis} {nCoord_array_str[i]} {coord_unit[idx2]}'
+    iso1 = [f'{xaxis} {nCoord_array_str[i]} {coord_unit[idx2]}' for i in range(len(nCoord_array))]
+    iso1 = np.array(iso1)
+    iso2 = [f'{yaxis} {nCoord_array_str[i]} {coord_unit[idx2]}' for i in range(len(nCoord_array))]
+    iso2 = np.array(iso2)
 
     df = pd.DataFrame()
     df[Not_fixed] = coord_range[idx]
     df = df_creator(Not_fixed, type_series, iso1, nCoord_array, coord_value, nprop1, coord_range[idx], df)
     df = df_creator(Not_fixed, type_series, iso2, nCoord_array, coord_value, nprop2, coord_range[idx], df)
                     
-    fig = px.scatter(title=titulo)
-    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:')
-    for i in range(len(nCoord_array)):
-        fig.add_scatter(x=df[iso1[i]], y=df[iso2[i]], name=nCoord_array_str[i], mode='markers')
-
+    fig = fig_creator(xaxis, yaxis, iso1, iso2, titulo, nCoord_array_str, df, idx2)    
     interruptor(df, fig, xaxis, yaxis, type_series)
 
 # --/ functions
@@ -221,7 +250,7 @@ with cont1:
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
 
 # File uploader
-uploaded_file = tab1.file_uploader('Upload fluid file:', type = ('xlsx', 'json'))
+uploaded_file = tab1.file_uploader('Upload fluid file:', type = ('xlsx', 'json'), on_change=fc.clear_cache())
 
 if uploaded_file is not None:
     if uploaded_file.type == 'application/json':
@@ -230,7 +259,7 @@ if uploaded_file is not None:
         prop_json = uploaded_file
     elif uploaded_file.type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
         fluid, prop_json = fc.xlsx_to_json(uploaded_file)
-    
+  
     # properties from json
     coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
 
@@ -241,13 +270,20 @@ if uploaded_file is not None:
     variables = np.array(coord + prop)  #coordinate and property labels + units
     coord = np.array(coord)             #coordinate labels + units
     prop = np.array(prop)               #property labels + units
-    prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
+    const_coord_dict = {coord[0]: (f'constant {coord_label[1]}', f'constant {coord_label[2]}'), 
+                        coord[1]: (f'constant {coord_label[0]}', f'constant {coord_label[2]}'), 
+                        coord[2]: (f'constant {coord_label[0]}', f'constant {coord_label[1]}')}
 
+    # needed for interpolation
+    prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
+    interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
+
+    # container for page
     maincont.header(fluid)
     with maincont:
-        tab4, tab5 = st.tabs(["Plot", "Table"])
+        tab4, tab5 = st.tabs(("Plot", "Table"))
 
-    # Sidebar filters
+    # sidebar filters
     tab2.header('Choose axes:')
     xaxis = tab2.selectbox('Select x-axis:', variables)
     yaxis = tab2.selectbox('Select y-axis:', variables) 
@@ -257,50 +293,16 @@ if uploaded_file is not None:
         st.warning("Choose another combination of axes")
     elif xaxis in coord and yaxis in coord:
         Fixed = tab3.selectbox('Choose a property for the color plot', prop)
-        nprop = get_idx(prop, Fixed)
-        xidx = get_idx(coord, xaxis)
-        yidx = get_idx(coord, yaxis)
-        zidx = np.delete(np.array([0, 1, 2]), [xidx, yidx])
-        minimo=coord_range[zidx][0][0]
-        maximo=coord_range[zidx][0][-1]
-        z_value = tab3.number_input(f'Choose a {coord[zidx][0]}:', min_value=minimo, max_value=maximo)
-        interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
-        Data = np.empty((len(coord_range[xidx]), len(coord_range[yidx])), dtype='float64')
-        for i in range(len(coord_range[xidx])):
-            for j in range(len(coord_range[yidx])):
-                if xaxis == coord[0] and yaxis == coord[1]:
-                    nXY = [coord_range[0][i], coord_range[1][j], z_value]
-                elif xaxis == coord[0] and yaxis == coord[2]:
-                    nXY = [coord_range[0][i], z_value, coord_range[2][j]]
-                elif xaxis == coord[1] and yaxis == coord[0]:
-                    nXY = [coord_range[0][j], coord_range[1][i], z_value]
-                elif xaxis == coord[1] and yaxis == coord[2]:
-                    nXY = [z_value, coord_range[1][i], coord_range[2][j]]
-                elif xaxis == coord[2] and yaxis == coord[0]:
-                    nXY = [coord_range[0][j], z_value, coord_range[2][i]]
-                elif xaxis == coord[2] and yaxis == coord[1]:
-                    nXY = [z_value, coord_range[1][j], coord_range[2][i]]
-
-                pt = np.array([nprop] + nXY)
-                Data[i, j] = interp(pt)
-
-        Data = xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
-        fig = px.imshow(Data, labels={'color': Fixed})
-        tab4.plotly_chart(fig)
-        with tab5:
-            st.table(Data.copy())
-            # to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
-            # nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
-            # st.download_button(label="Download data", data=xarray_extras.csv.to_csv(Data), file_name=nombre)
+        coord_on_both_axes(xaxis, yaxis, Fixed)
     elif xaxis in coord and yaxis in prop:   
-        type_series = series_options(xaxis)
+        type_series = tab3.radio('Choose the type of the series:', const_coord_dict[xaxis])
         coord_on_one_axis(xaxis, yaxis, type_series)
     elif xaxis in prop and yaxis in coord:
-        type_series = series_options(yaxis)
+        type_series = tab3.radio('Choose the type of the series:', const_coord_dict[yaxis])
         coord_on_one_axis(xaxis, yaxis, type_series) 
     elif xaxis in prop and yaxis in prop:
         Not_fixed = tab2.selectbox('Which parameter should vary?', coord)
-        type_series = series_options(Not_fixed)
+        type_series = tab3.radio('Choose the type of the series:', const_coord_dict[Not_fixed])
         prop_on_both_axes(xaxis, yaxis, type_series, Not_fixed) 
 
     st.sidebar.markdown("#")    #empty space at the bottom of sidebar
