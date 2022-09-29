@@ -5,12 +5,11 @@ import pandas as pd
 import json
 import streamlit as st
 import openpyxl
-import subprocess
 #from config import ROOT_DIR, DATA_DIR
 #from pathlib import Path
 
 #%% functions
-@st.cache
+@st.experimental_memo
 def xlsx_to_json(uploaded_file: str) -> tuple:
     """
     returns 4D data block in json format from input xls file
@@ -95,13 +94,7 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     # create json object from dict
     return fluid, json.dumps(prop_dict)
 
-def clear_cache():
-    # Delete all the items in Session state
-    # for key in st.session_state.keys():
-    #     del st.session_state[key]
-    subprocess.run('streamlit cache clear')
-
-@st.cache
+@st.experimental_memo
 def get_data_from_json(prop_json) -> tuple:
     """
     extract data from json file to np.array
@@ -135,4 +128,10 @@ def get_data_from_json(prop_json) -> tuple:
     
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
+def clear_cache():
+    # Delete all keys in Session state
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    # Clear values from *all* memoized functions:
+    st.experimental_memo.clear()
 #--/ functions

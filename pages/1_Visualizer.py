@@ -73,7 +73,8 @@ def isocurve(type_series: str) -> tuple[np.array]:
         st.session_state.count -= 1
 
     with cont2:
-        nCoord_array = [st.number_input(f'Enter a {coord[idx]}:', min_value=minimo, max_value=maximo, key=i) 
+        st.write(f'Enter a {coord[idx]}:')
+        nCoord_array = [st.number_input(label="", min_value=minimo, max_value=maximo, key=i, label_visibility="collapsed") 
                         for i in range(st.session_state.count)]
 
     return np.array(nCoord_array)
@@ -249,16 +250,10 @@ with cont1:
 # set file path 
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
 
-if 'acount' not in st.session_state:
-        st.session_state.acount = 0
-    
-def plusf():
-    st.session_state.acount += 1
-    st.write(st.session_state.acount)
-
 # File uploader
-uploaded_file = tab1.file_uploader('Upload fluid file:', type = ('xlsx', 'json'), on_change=plusf())
-st.write(st.session_state)
+# the on_change argument expects a function object (without the parenthesis)
+uploaded_file = tab1.file_uploader('Upload fluid file:', type=('xlsx', 'json'), on_change=fc.clear_cache)
+tab1.write(st.session_state)
 
 if uploaded_file is not None:
     if uploaded_file.type == 'application/json':
@@ -316,5 +311,3 @@ if uploaded_file is not None:
     st.sidebar.markdown("#")    #empty space at the bottom of sidebar
 else:
     st.warning('Please upload a fluid file to begin')
-    st.button("Press me")
-    # st.session_state.count = 0
