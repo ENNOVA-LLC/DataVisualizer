@@ -1,6 +1,7 @@
 #%% import pkgs
 # from config import DATA_DIR, ROOT_DIR
 # from pathlib import Path
+from configparser import Interpolation
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -206,8 +207,9 @@ def coord_on_both_axes(xaxis, yaxis, Fixed):
     z_value = tab3.number_input(f'Choose a {coord[zidx]}:', min_value=minimo, max_value=maximo)
 
     Data = xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
-    fig = px.imshow(Data.T, labels={'color': Fixed}, origin='lower')
+    fig = px.imshow(Data.T, labels={'color': Fixed}, color_continuous_scale='Jet', origin='lower')
     fig.update_layout(title=f'{coord[zidx]}: {z_value}')
+    fig.update_traces(zsmooth="best")
     df = Data.to_pandas()
 
     interruptor(df, fig, xaxis, yaxis, Fixed)
