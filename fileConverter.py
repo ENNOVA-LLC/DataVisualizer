@@ -9,7 +9,7 @@ import openpyxl
 #from pathlib import Path
 
 #%% functions
-@st.cache
+@st.experimental_memo
 def xlsx_to_json(uploaded_file: str) -> tuple:
     """
     returns 4D data block in json format from input xls file
@@ -94,7 +94,7 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     # create json object from dict
     return fluid, json.dumps(prop_dict)
 
-@st.cache
+@st.experimental_memo
 def get_data_from_json(prop_json) -> tuple:
     """
     extract data from json file to np.array
@@ -112,20 +112,26 @@ def get_data_from_json(prop_json) -> tuple:
     """
     # convert json to df
     df = pd.read_json(prop_json, orient='index')
-    
+
     # extract properties
     coord_label = np.array(df.at['coord_label', 0])
     coord_unit = np.array(df.at['coord_unit', 0])
     prop_label = np.array(df.at['prop_label', 0])
     prop_unit = np.array(df.at['prop_unit', 0])
-    coord_1 = np.array(df.at['GOR', 0])
-    coord_2 = np.array(df.at['P', 0])
+    coord_1 = np.array(df.at[coord_label[0], 0])
+    coord_2 = np.array(df.at[coord_label[1], 0])
     coord_2 = np.round(coord_2, 2)
-    coord_3 = np.array(df.at['T', 0])
+    coord_3 = np.array(df.at[coord_label[2], 0])
     coord_3 = np.round(coord_3, 2)
-    coord_range = np.array([coord_1, coord_2, coord_3])
+    coord_range = (coord_1, coord_2, coord_3)
     prop_table =  np.asarray(df.at['prop_table', 0], dtype=float)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
     
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
+def clear_cache():
+    # Delete all keys in Session state
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    # Clear values from *all* memoized functions:
+    st.experimental_memo.clear()
 #--/ functions
