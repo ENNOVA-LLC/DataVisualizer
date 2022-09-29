@@ -4,3 +4,4 @@ pandas==1.4.2
 plotly_express==0.4.1
 scipy==1.7.3
 streamlit==1.13.0
+xarray==0.20.1
