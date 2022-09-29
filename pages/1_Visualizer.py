@@ -129,6 +129,9 @@ def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_c
     return df
 
 def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value):
+    """
+    Creates xarray that is used for the heatmap plot
+    """
     Data = np.empty((len(coord_range[xidx]), len(coord_range[yidx])), dtype='float64')
     for i in range(len(coord_range[xidx])):
         for j in range(len(coord_range[yidx])):
@@ -151,14 +154,17 @@ def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value):
 
 def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2):
     fig = px.scatter(title=titulo)
-    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:')
+    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:', showlegend=True)
     for i in range(len(nCoord_array_str)):
         if xaxis in coord:
-            fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers')
+            fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
+                            hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         elif yaxis in coord:
-            fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_array_str[i], mode='markers')
+            fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_array_str[i], mode='markers',
+                            hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         else:
-            fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers')
+            fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
+                            hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
     return fig
 
 def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
@@ -251,9 +257,8 @@ with cont1:
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
 
 # File uploader
-# the on_change argument expects a function object (without the parenthesis)
+# the on_change parameter expects a function object (without the parenthesis)
 uploaded_file = tab1.file_uploader('Upload fluid file:', type=('xlsx', 'json'), on_change=fc.clear_cache)
-tab1.write(st.session_state)
 
 if uploaded_file is not None:
     if uploaded_file.type == 'application/json':
