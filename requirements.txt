@@ -3,4 +3,4 @@ openpyxl==3.0.9
 pandas==1.4.2
 plotly_express==0.4.1
 scipy==1.7.3
-streamlit==1.12.2
+streamlit==1.13.0
