@@ -5,6 +5,7 @@ import pandas as pd
 import json
 import streamlit as st
 import openpyxl
+import subprocess
 #from config import ROOT_DIR, DATA_DIR
 #from pathlib import Path
 
@@ -96,8 +97,9 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
 
 def clear_cache():
     # Delete all the items in Session state
-    for key in st.session_state.keys():
-        del st.session_state[key]
+    # for key in st.session_state.keys():
+    #     del st.session_state[key]
+    subprocess.run('streamlit cache clear')
 
 @st.cache
 def get_data_from_json(prop_json) -> tuple:
