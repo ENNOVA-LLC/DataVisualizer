@@ -74,7 +74,7 @@ def isocurve(type_series: str) -> tuple[np.array]:
 
     with cont2:
         st.write(f'Enter a {coord[idx]}:')
-        nCoord_array = [st.number_input(label="", min_value=minimo, max_value=maximo, key=i, label_visibility="collapsed") 
+        nCoord_array = [st.number_input(label="Enter value", min_value=minimo, max_value=maximo, key=i, label_visibility="collapsed") 
                         for i in range(st.session_state.count)]
 
     return np.array(nCoord_array)
@@ -206,7 +206,7 @@ def coord_on_both_axes(xaxis, yaxis, Fixed):
     z_value = tab3.number_input(f'Choose a {coord[zidx]}:', min_value=minimo, max_value=maximo)
 
     Data = xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
-    fig = px.imshow(Data.T, labels={'color': Fixed})
+    fig = px.imshow(Data.T, labels={'color': Fixed}, origin='lower')
     fig.update_layout(title=f'{coord[zidx]}: {z_value}')
     df = Data.to_pandas()
 
