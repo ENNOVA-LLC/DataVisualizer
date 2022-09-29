@@ -94,9 +94,7 @@ def coordinates(axis: str, type_series: str) -> tuple[str]:
     maximo=coord_range[idx][-1]
     coord_value = tab3.number_input(f'Enter a {coord[idx]}:', min_value=minimo, max_value=maximo)
 
-    a = (f'{coord_label[0]}: {str(coord_value)} {coord_unit[0]}', 
-        f'{coord_label[1]}: {str(coord_value)} {coord_unit[1]}', 
-        f'{coord_label[2]}: {str(coord_value)} {coord_unit[2]}')
+    a = [f'{coord[i]}: {str(coord_value)}' for i in range(3)]
     titulo = a[idx]
     return coord_value, titulo
 
