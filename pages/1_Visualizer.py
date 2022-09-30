@@ -1,7 +1,7 @@
 #%% import pkgs
 # from config import DATA_DIR, ROOT_DIR
 # from pathlib import Path
-from configparser import Interpolation
+from queue import Empty
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -10,6 +10,7 @@ from io import BytesIO
 import plotly_express as px
 import streamlit as st
 import fileConverter as fc
+import kaleido
 
 
 #%% streamlit app properties
@@ -43,8 +44,8 @@ def convert_df(df: pd.DataFrame, to_type: str):
         return output.getvalue()
 
 def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
-    tab4.plotly_chart(fig)
-    with tab5:
+    tab5.plotly_chart(fig)
+    with tab6:
         st.dataframe(df.copy())
         to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
         nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
@@ -151,19 +152,37 @@ def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value):
     Data = xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
     return Data
 
-def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2):
+def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) -> px.scatter:
     fig = px.scatter(title=titulo)
-    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:', showlegend=True)
-    for i in range(len(nCoord_array_str)):
+    if np.size(nCoord_array_str) != 0:
         if xaxis in coord:
-            fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
-                            hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
+            for i in range(len(nCoord_array_str)):
+                fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
+                                hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         elif yaxis in coord:
-            fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_array_str[i], mode='markers',
-                            hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
+            for i in range(len(nCoord_array_str)):
+                fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_array_str[i], mode='markers',
+                                hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         else:
-            fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
-                            hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
+            for i in range(len(nCoord_array_str)):
+                fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
+                                hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
+        
+        # number input widgets are populated with default values 
+        full_fig = fig.full_figure_for_development()    # needed to access default range of axes
+        if 'axes' not in st.session_state:
+            st.session_state.axes = 0
+        if tab4.button("Reset axes"):
+            st.session_state.axes += 1
+        x_min = tab4.number_input("Min value of x-axis", value=full_fig.layout.xaxis.range[0], key=f"xmin_{st.session_state.axes}")
+        x_max = tab4.number_input("Max value of x-axis", value=full_fig.layout.xaxis.range[1], key=f"xmax_{st.session_state.axes}")
+        y_min = tab4.number_input("Min value of y-axis", value=full_fig.layout.yaxis.range[0], key=f"ymin_{st.session_state.axes}")
+        y_max = tab4.number_input("Max value of y-axis", value=full_fig.layout.yaxis.range[1], key=f"ymax_{st.session_state.axes}")
+
+        fig.update_yaxes(range=[y_min, y_max])
+        fig.update_xaxes(range=[x_min, x_max])
+
+    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:', showlegend=True)
     return fig
 
 def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
@@ -251,7 +270,7 @@ def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
 maincont = st.container()
 cont1 = st.container()
 with cont1:
-    tab1, tab2, tab3 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type"])
+    tab1, tab2, tab3, tab4 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type", "Custom range"])
 
 # set file path 
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
@@ -289,7 +308,7 @@ if uploaded_file is not None:
     # container for page
     maincont.header(fluid)
     with maincont:
-        tab4, tab5 = st.tabs(("Plot", "Table"))
+        tab5, tab6 = st.tabs(("Plot", "Table"))
 
     # sidebar filters
     tab2.header('Choose axes:')
