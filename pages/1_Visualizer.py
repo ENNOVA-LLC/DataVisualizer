@@ -1,11 +1,9 @@
 #%% import pkgs
-# from config import DATA_DIR, ROOT_DIR
-# from pathlib import Path
+import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.interpolate import RegularGridInterpolator
-from io import BytesIO
+from scipy import interpolate
 import plotly_express as px
 import streamlit as st
 import fileConverter as fc
@@ -29,18 +27,21 @@ def get_idx(X: np.array, a: str) -> str:
     """
     return np.where(X == a)[0][0]
 
-# DataFrame converter: DF -> csv/excel/json
-def convert_df(df: pd.DataFrame, to_type: str):
-    if to_type == 'csv':
-        return df.to_csv().encode('utf-8') 
-    elif to_type == 'json':
-        return df.to_json(orient='index').encode('utf-8')   
-    elif to_type == 'xlsx':
-        output = BytesIO()
-        writer = pd.ExcelWriter(output)
-        df.to_excel(writer)
-        writer.save()
-        return output.getvalue()
+def clear_cache():
+    # Delete all keys in Session state
+    for key in st.session_state.keys():
+        del st.session_state[key]
+    # Clear values from *all* memoized functions:
+    st.experimental_memo.clear()
+
+def reset_axes():
+    """
+    Resets range of axes
+    """
+    if 'axes' not in st.session_state:
+        st.session_state.axes = 0
+
+    st.session_state.axes += 1
 
 def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
     tab5.plotly_chart(fig)
@@ -48,25 +49,19 @@ def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
         st.dataframe(df.copy())
         to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
         nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
-        st.download_button(label="Download data", data=convert_df(df, to_type), file_name=nombre)
+        st.download_button(label="Download data", data=fc.convert_df(df, to_type), file_name=nombre)
 
 def prop_definer(prop_label, prop_table, prop, variables, new_prop):
-    new_prop_mod = new_prop.replace("/", " ")
-    new_prop_mod = new_prop_mod.replace("+", " ")
-    new_prop_mod = new_prop_mod.replace("-", " ")
-    new_prop_mod = new_prop_mod.replace("*", " ")
-    new_prop_mod = new_prop_mod.replace("(", " ")
-    new_prop_mod = new_prop_mod.replace(")", " ")
-    prop_list = new_prop_mod.split()
-
-    res = [prop_list[i] for i in range(len(prop_list)) if prop_list[i] in prop_label]
+    prop_list = remove_operators(new_prop)
+    # res = [prop_list[i] for i in range(len(prop_list)) if prop_list[i] in prop_label]
+    res = [p for p in prop_list if p in prop_label]
     res = np.array(res)
     if new_prop != "":
         prop_str = new_prop
         if np.size(res) != 0:
-            for i in range(len(res)):
-                x = get_idx(prop_label, res[i])
-                prop_str = prop_str.replace(res[i], f"prop_table[{x}, :, :, :]")
+            for r in res:
+                x = get_idx(prop_label, r)
+                prop_str = prop_str.replace(r, f"prop_table[{x}, :, :, :]")
 
             try:
                 y = eval(prop_str)
@@ -82,6 +77,15 @@ def prop_definer(prop_label, prop_table, prop, variables, new_prop):
         else:
             tab1.error("Check your input")
     return prop_label, prop_table, prop, variables
+
+def remove_operators(new_prop):
+    mod = new_prop.replace("/", " ")
+    mod = mod.replace("+", " ")
+    mod = mod.replace("-", " ")
+    mod = mod.replace("*", " ")
+    mod = mod.replace("(", " ")
+    mod = mod.replace(")", " ")
+    return mod.split()
 
 def isocurve(type_series: str) -> tuple[np.array]:
     """
@@ -136,72 +140,69 @@ def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_c
     """
     Creates DF that is used to make the plot and table, reads data from 4D array and interpolates
     """
-    for i in range(len(nCoord_array)):
+    for i, nCoord in enumerate(nCoord_array):
         f = np.empty_like(rango_coord)
         for j in range(len(rango_coord)):
-            nXY = df_piecewise(i, j, coord_value, nCoord_array, axis, type_series)
-            pt = np.array([nprop] + nXY)
+            pt = df_piecewise(j, coord_value, nCoord, axis, type_series, nprop)
             f[j] = interp(pt)
         df[iso[i]] = f
     return df
 
-def df_piecewise(i, j, coord_value, nCoord_array, axis, type_series) -> list:
+def df_piecewise(j, coord_value, nCoord, axis, type_series, nprop) -> np.array:
     if axis == coord[0] and type_series == f'constant {coord_label[1]}':
-        return [coord_range[0][j], nCoord_array[i], coord_value]
+        return np.array([nprop, coord_range[0][j], nCoord, coord_value])
     elif axis == coord[0] and type_series == f'constant {coord_label[2]}':
-        return [coord_range[0][j], coord_value, nCoord_array[i]]
+        return np.array([nprop, coord_range[0][j], coord_value, nCoord])
     elif axis == coord[1] and type_series == f'constant {coord_label[0]}':
-        return [nCoord_array[i], coord_range[1][j], coord_value]
+        return np.array([nprop, nCoord, coord_range[1][j], coord_value])
     elif axis == coord[1] and type_series == f'constant {coord_label[2]}':
-        return [coord_value, coord_range[1][j], nCoord_array[i]]
+        return np.array([nprop, coord_value, coord_range[1][j], nCoord])
     elif axis == coord[2] and type_series == f'constant {coord_label[0]}':
-        return [nCoord_array[i], coord_value, coord_range[2][j]]
+        return np.array([nprop, nCoord, coord_value, coord_range[2][j]])
     elif axis == coord[2] and type_series == f'constant {coord_label[1]}':
-        return [coord_value, nCoord_array[i], coord_range[2][j]]
+        return np.array([nprop, coord_value, nCoord, coord_range[2][j]])
 
-def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value):
+def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value) -> xr.DataArray:
     """
-    Creates xarray that is used for the heatmap plot
+    Creates numpy array that is used for heatmap plot
     """
-    Data = np.empty((len(coord_range[xidx]), len(coord_range[yidx])), dtype='float64')
-    for i in range(len(coord_range[xidx])):
-        for j in range(len(coord_range[yidx])):
-            nXY = xarray_piecewise(xaxis, yaxis, z_value, i, j)
-            pt = np.array([nprop] + nXY)
-            Data[i, j] = interp(pt)
-    Data = xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
-    return Data
+    x = len(coord_range[xidx])
+    y = len(coord_range[yidx])
+    Data = np.empty((x, y), dtype='float64')
+    for i, j in itertools.product(range(x), range(y)):
+        pt = xarray_piecewise(xaxis, yaxis, z_value, nprop, i, j)
+        Data[i, j] = interp(pt)
+    return xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
 
-def xarray_piecewise(xaxis, yaxis, z_value, i, j) -> list:
+def xarray_piecewise(xaxis, yaxis, z_value, nprop, i, j) -> np.array:
     if xaxis == coord[0] and yaxis == coord[1]:
-        return [coord_range[0][i], coord_range[1][j], z_value]
+        return np.array([nprop, coord_range[0][i], coord_range[1][j], z_value])
     elif xaxis == coord[0] and yaxis == coord[2]:
-        return [coord_range[0][i], z_value, coord_range[2][j]]
+        return np.array([nprop, coord_range[0][i], z_value, coord_range[2][j]])
     elif xaxis == coord[1] and yaxis == coord[0]:
-        return [coord_range[0][j], coord_range[1][i], z_value]
+        return np.array([nprop, coord_range[0][j], coord_range[1][i], z_value])
     elif xaxis == coord[1] and yaxis == coord[2]:
-        return [z_value, coord_range[1][i], coord_range[2][j]]
+        return np.array([nprop, z_value, coord_range[1][i], coord_range[2][j]])
     elif xaxis == coord[2] and yaxis == coord[0]:
-        return [coord_range[0][j], z_value, coord_range[2][i]]
+        return np.array([nprop, coord_range[0][j], z_value, coord_range[2][i]])
     elif xaxis == coord[2] and yaxis == coord[1]:
-        return [z_value, coord_range[1][j], coord_range[2][i]]
+        return np.array([nprop, z_value, coord_range[1][j], coord_range[2][i]])
 
 def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) -> px.scatter:
     fig = px.scatter(title=titulo)
     if np.size(nCoord_array_str) != 0:
         if xaxis in coord:
-            for i in range(len(nCoord_array_str)):
-                fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
+            for i, nCoord_str in enumerate(nCoord_array_str):
+                fig.add_scatter(x=df[axis1], y=df[axis2[i]], name=nCoord_str, mode='markers',
                                 hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         elif yaxis in coord:
-            for i in range(len(nCoord_array_str)):
-                fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_array_str[i], mode='markers',
+            for i, nCoord_str in enumerate(nCoord_array_str):
+                fig.add_scatter(x=df[axis2[i]], y=df[axis1], name=nCoord_str, mode='markers',
                                 hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         else:
-            for i in range(len(nCoord_array_str)):
-                fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_array_str[i], mode='markers',
+            for i, nCoord_str in enumerate(nCoord_array_str):
+                fig.add_scatter(x=df[axis1[i]], y=df[axis2[i]], name=nCoord_str, mode='markers',
                                 hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
-        
         fig = change_range(fig)
 
     fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:', showlegend=True)
@@ -222,15 +223,6 @@ def change_range(fig):
     fig.update_xaxes(range=[x_min, x_max])
     return fig
 
-def reset_axes():
-    """
-    Resets range of axes
-    """
-    if 'axes' not in st.session_state:
-        st.session_state.axes = 0
-
-    st.session_state.axes += 1
-
 def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     """
     This function is called when the xaxis or the yaxis is a coordinate (GOR, T, P)
@@ -243,7 +235,7 @@ def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     elif yaxis in coord:
         axis = yaxis
         nprop = get_idx(prop, xaxis)
-    
+
     nCoord_array = isocurve(type_series)
     coord_value, titulo = coordinates(axis, type_series)
 
@@ -251,14 +243,14 @@ def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     idx2 = get_idx(const_coord, type_series)
 
     nCoord_array_str = nCoord_array.astype('str')
-    iso1 = [f'{nCoord_array_str[i]} {coord_unit[idx2]}' for i in range(len(nCoord_array))]
+    iso1 = [f'{nCoord_str} {coord_unit[idx2]}' for nCoord_str in nCoord_array_str]
     iso1 = np.array(iso1)
 
     df = pd.DataFrame()
     df[axis] = coord_range[idx]
     df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, coord_range[idx], df)
 
-    fig = fig_creator(xaxis, yaxis, axis, iso1, titulo, nCoord_array_str, df, idx2)     
+    fig = fig_creator(xaxis, yaxis, axis, iso1, titulo, nCoord_array_str, df, idx2)
     interruptor(df, fig, xaxis, yaxis, type_series)
 
 def coord_on_both_axes(xaxis, yaxis, Fixed):
@@ -282,7 +274,6 @@ def coord_on_both_axes(xaxis, yaxis, Fixed):
         
     fig = change_range(fig)
     df = Data.to_pandas()
-
     interruptor(df, fig, xaxis, yaxis, Fixed)
 
 def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
@@ -301,9 +292,9 @@ def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     idx2 = get_idx(const_coord, type_series)
 
     nCoord_array_str = nCoord_array.astype('str')
-    iso1 = [f'{xaxis} {nCoord_array_str[i]} {coord_unit[idx2]}' for i in range(len(nCoord_array))]
+    iso1 = [f'{xaxis} {nCoord_str} {coord_unit[idx2]}' for nCoord_str in nCoord_array_str]
     iso1 = np.array(iso1)
-    iso2 = [f'{yaxis} {nCoord_array_str[i]} {coord_unit[idx2]}' for i in range(len(nCoord_array))]
+    iso2 = [f'{yaxis} {nCoord_str} {coord_unit[idx2]}' for nCoord_str in nCoord_array_str]
     iso2 = np.array(iso2)
 
     df = pd.DataFrame()
@@ -322,14 +313,14 @@ def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
 maincont = st.container()
 cont1 = st.container()
 with cont1:
-    tab1, tab2, tab3, tab4 = st.sidebar.tabs(["File uploader", "Choose axes", "Series type", "Custom range"])
+    tab1, tab2, tab3, tab4 = st.sidebar.tabs(("File uploader", "Choose axes", "Series type", "Custom range"))
 
 # set file path 
 # ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
 
 # File uploader
 # the on_change parameter expects a function object (without the parenthesis)
-uploaded_file = tab1.file_uploader('Upload fluid file:', type=('xlsx', 'json'), on_change=fc.clear_cache)
+uploaded_file = tab1.file_uploader('Upload fluid file:', type=('xlsx', 'json'), on_change=clear_cache)
 
 if uploaded_file is not None:
     if uploaded_file.type == 'application/json':
@@ -344,14 +335,14 @@ if uploaded_file is not None:
 
     # some useful arrays
     const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
-    coord = [f"{coord_label[i]} [{coord_unit[i]}]" for i in range(len(coord_label))]    
-    prop = [f"{prop_label[i]} [{prop_unit[i]}]" for i in range(len(prop_label))]        
+    coord = [f"{label} [{coord_unit[i]}]" for i, label in enumerate(coord_label)]    
+    prop = [f"{label} [{prop_unit[i]}]" for i, label in enumerate(prop_label)]        
     variables = np.array(coord + prop)  #coordinate and property labels + units
     coord = np.array(coord)             #coordinate labels + units
     prop = np.array(prop)               #property labels + units
-    const_coord_dict = {coord[0]: (f'constant {coord_label[1]}', f'constant {coord_label[2]}'), 
-                        coord[1]: (f'constant {coord_label[0]}', f'constant {coord_label[2]}'), 
-                        coord[2]: (f'constant {coord_label[0]}', f'constant {coord_label[1]}')}
+    const_coord_dict = {coord[0]: (const_coord[1], const_coord[2]), 
+                        coord[1]: (const_coord[0], const_coord[2]), 
+                        coord[2]: (const_coord[0], const_coord[1])}
 
     # define a new property by performing elementary operations on the base properties
     new_prop = tab1.text_input("Define a new property:", placeholder="e.g. FRI_L1 / MW_L1")
@@ -359,7 +350,7 @@ if uploaded_file is not None:
 
     # needed for interpolation
     prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
-    interp = RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
+    interp = interpolate.RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
 
     # container for page
     maincont.header(fluid)
@@ -367,7 +358,6 @@ if uploaded_file is not None:
         tab5, tab6 = st.tabs(("Plot", "Table"))
 
     # sidebar filters
-    tab2.header('Choose axes:')
     xaxis = tab2.selectbox('Select x-axis:', variables, on_change=reset_axes)
     yaxis = tab2.selectbox('Select y-axis:', variables, on_change=reset_axes) 
 
@@ -388,6 +378,6 @@ if uploaded_file is not None:
         type_series = tab3.radio('Choose the type of the series:', const_coord_dict[Not_fixed])
         prop_on_both_axes(xaxis, yaxis, type_series, Not_fixed) 
 
-    st.sidebar.markdown("#")    #empty space at the bottom of sidebar
+    st.sidebar.markdown("#")    # empty space at the bottom of sidebar
 else:
     st.warning('Please upload a fluid file to begin')

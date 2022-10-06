@@ -5,6 +5,7 @@ import pandas as pd
 import json
 import streamlit as st
 import openpyxl
+from io import BytesIO
 #from config import ROOT_DIR, DATA_DIR
 #from pathlib import Path
 
@@ -128,10 +129,20 @@ def get_data_from_json(prop_json) -> tuple:
     
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
-def clear_cache():
-    # Delete all keys in Session state
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    # Clear values from *all* memoized functions:
-    st.experimental_memo.clear()
+@st.experimental_memo
+def convert_df(df: pd.DataFrame, to_type: str):
+    """
+    DataFrame converter: DF -> csv/excel/json
+    """
+    if to_type == 'csv':
+        return df.to_csv().encode('utf-8') 
+    elif to_type == 'json':
+        return df.to_json(orient='index').encode('utf-8')   
+    elif to_type == 'xlsx':
+        output = BytesIO()
+        writer = pd.ExcelWriter(output)
+        df.to_excel(writer)
+        writer.save()
+        return output.getvalue()
+
 #--/ functions
