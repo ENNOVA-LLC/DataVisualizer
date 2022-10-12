@@ -3,14 +3,13 @@ import itertools
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy import interpolate
+from scipy import interpolate as ip
 import plotly_express as px
 import streamlit as st
 import fileConverter as fc
 import kaleido
 
-
-#%% streamlit app properties
+# streamlit app properties
 # Page configuration (necessary for streamlit to work, must be at the beginning of program)
 st.set_page_config(page_title='Visualizer', page_icon=':bar_chart:', layout='wide')
 
@@ -168,7 +167,7 @@ def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value) -> xr.DataArray:
     """
     x = len(coord_range[xidx])
     y = len(coord_range[yidx])
-    Data = np.empty((x, y), dtype='float64')
+    Data = np.empty((x, y), dtype=np.float64)
     for i, j in itertools.product(range(x), range(y)):
         pt = xarray_piecewise(xaxis, yaxis, z_value, nprop, i, j)
         Data[i, j] = interp(pt)
@@ -210,7 +209,7 @@ def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) 
 
 def change_range(fig):
     # number input widgets are populated with default values 
-    full_fig = fig.full_figure_for_development()    # needed to access default range of axes (kaleido package)
+    full_fig = fig.full_figure_for_development(warn=False)    # needed to access default range of axes (kaleido package)
     if tab4.button("Reset axes"):
         reset_axes()
 
@@ -328,10 +327,12 @@ if uploaded_file is not None:
         fluid = fluid.replace('lookup_', '')
         prop_json = uploaded_file
     elif uploaded_file.type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-        fluid, prop_json = fc.xlsx_to_json(uploaded_file)
+        with st.spinner(text="In progress..."):
+            fluid, prop_json = fc.xlsx_to_json(uploaded_file)
   
     # properties from json
-    coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
+    with st.spinner(text="Almost done..."):
+        coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
 
     # some useful arrays
     const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
@@ -350,7 +351,7 @@ if uploaded_file is not None:
 
     # needed for interpolation
     prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
-    interp = interpolate.RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
+    interp = ip.RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
 
     # container for page
     maincont.header(fluid)

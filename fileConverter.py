@@ -1,16 +1,17 @@
 #%% import pkgs
-#from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 import pandas as pd
+from scipy import ndimage as nd
+from scipy import interpolate as ip
 import json
 import streamlit as st
+import itertools
 import openpyxl
 from io import BytesIO
-#from config import ROOT_DIR, DATA_DIR
-#from pathlib import Path
+
 
 #%% functions
-@st.experimental_memo
+@st.experimental_memo(show_spinner=False)
 def xlsx_to_json(uploaded_file: str) -> tuple:
     """
     returns 4D data block in json format from input xls file
@@ -60,7 +61,6 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     prop_table = np.zeros(prop_shape, dtype=float)
 
     # loop through sheets ('TPF' only) and generate slice corresponding to each sheet
-    import itertools
     i = 0
     for (sht_name, sht_df) in df_lookup.items():
         if "TPF" in sht_name:
@@ -95,7 +95,7 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     # create json object from dict
     return fluid, json.dumps(prop_dict)
 
-@st.experimental_memo
+@st.experimental_memo(show_spinner=False)
 def get_data_from_json(prop_json) -> tuple:
     """
     extract data from json file to np.array
@@ -125,8 +125,9 @@ def get_data_from_json(prop_json) -> tuple:
     coord_3 = np.array(df.at[coord_label[2], 0])
     coord_3 = np.round(coord_3, 2)
     coord_range = (coord_1, coord_2, coord_3)
-    prop_table =  np.asarray(df.at['prop_table', 0], dtype=float)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
-    
+    prop_table =  np.asarray(df.at['prop_table', 0], dtype=np.float64)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
+    prop_table =  preproc(prop_table, coord_range, prop_label)       # interpolates failed calculations
+
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
 @st.experimental_memo
@@ -144,5 +145,40 @@ def convert_df(df: pd.DataFrame, to_type: str):
         df.to_excel(writer)
         writer.save()
         return output.getvalue()
+
+def f_founder(arr):
+    c1 = nd.uniform_filter(arr, size=3)
+    c2 = nd.uniform_filter(arr*arr, size=3)
+    var = c2 - c1*c1
+    var = np.where(var < 1e-7, 1e-7, var)
+    std = np.sqrt(var)
+    mu = c1
+    z = np.abs((arr - mu)/std)      # z-score with abs
+    z = np.where(z == np.inf, 0, z)
+    return np.where(z >= 1)
+
+@st.experimental_memo(show_spinner=False)
+def preproc(ptable, crange, plabel):
+    x = range(len(plabel))
+    y = range(len(crange[0]))
+    err = []
+    for X1 in y:
+        arr = ptable[0, X1]     # get the failures of the first prop only, all props fail at the same places
+        err.append(f_founder(arr))
+    err = tuple(err)
+    for X0, X1 in itertools.product(x, y):
+        arr = ptable[X0, X1]
+        e = err[X1]
+        arr[e] = np.nan
+        arr = np.ma.masked_invalid(arr)
+        xx, yy = np.meshgrid(crange[2], crange[1])
+        # get only the valid values
+        x1 = xx[~arr.mask]
+        y1 = yy[~arr.mask]
+        newarr = arr[~arr.mask]
+        newarr = ip.griddata((x1, y1), newarr.ravel(), (xx, yy), method='cubic')
+        # https://stackoverflow.com/questions/37662180/interpolate-missing-values-2d-python
+        ptable[X0, X1] = newarr
+    return ptable
 
 #--/ functions
