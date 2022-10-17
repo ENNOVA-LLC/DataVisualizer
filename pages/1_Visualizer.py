@@ -92,8 +92,8 @@ def isocurve(type_series: str) -> tuple[np.array]:
         nCoord_array: array of values of the multiple isocurves
     """
     idx = get_idx(const_coord, type_series)
-    minimo=coord_range[idx][0]
-    maximo=coord_range[idx][-1]
+    minimo=crange[idx][0]
+    maximo=crange[idx][-1]
 
     # add/delete buttons
     cont2 = tab3.container()
@@ -127,8 +127,8 @@ def coordinates(axis: str, type_series: str) -> tuple[str]:
     type_idx = get_idx(const_coord, type_series)
     axis_idx = get_idx(coord, axis)
     idx = np.delete(np.array([0, 1, 2]), [axis_idx, type_idx])[0]
-    minimo=coord_range[idx][0]
-    maximo=coord_range[idx][-1]
+    minimo=crange[idx][0]
+    maximo=crange[idx][-1]
     coord_value = tab3.number_input(f'Enter a {coord[idx]}:', min_value=minimo, max_value=maximo)
 
     titles = [f'{coord[i]}: {str(coord_value)}' for i in range(3)]
@@ -142,50 +142,47 @@ def df_creator(axis, type_series, iso, nCoord_array, coord_value, nprop, rango_c
     for i, nCoord in enumerate(nCoord_array):
         f = np.empty_like(rango_coord)
         for j in range(len(rango_coord)):
-            pt = df_piecewise(j, coord_value, nCoord, axis, type_series, nprop)
+            pt = df_point(j, coord_value, nCoord, axis, type_series, nprop)
             f[j] = interp(pt)
         df[iso[i]] = f
     return df
 
-def df_piecewise(j, coord_value, nCoord, axis, type_series, nprop) -> np.array:
-    if axis == coord[0] and type_series == f'constant {coord_label[1]}':
-        return np.array([nprop, coord_range[0][j], nCoord, coord_value])
-    elif axis == coord[0] and type_series == f'constant {coord_label[2]}':
-        return np.array([nprop, coord_range[0][j], coord_value, nCoord])
-    elif axis == coord[1] and type_series == f'constant {coord_label[0]}':
-        return np.array([nprop, nCoord, coord_range[1][j], coord_value])
-    elif axis == coord[1] and type_series == f'constant {coord_label[2]}':
-        return np.array([nprop, coord_value, coord_range[1][j], nCoord])
-    elif axis == coord[2] and type_series == f'constant {coord_label[0]}':
-        return np.array([nprop, nCoord, coord_value, coord_range[2][j]])
-    elif axis == coord[2] and type_series == f'constant {coord_label[1]}':
-        return np.array([nprop, coord_value, nCoord, coord_range[2][j]])
+def df_point(j, coord_value, nCoord, axis, type_series, nprop) -> np.array:
+    """
+    Generates point for df_creator()
+    """
+    inner = [nprop]
+    inner.extend(crange[k][j] if axis == coord[k] else nCoord if type_series == f'constant {coord_label[k]}' 
+                else coord_value for k in range(3))
+    return np.array(inner, dtype=np.float64)
 
 def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value) -> xr.DataArray:
     """
-    Creates numpy array that is used for heatmap plot
+    Creates xarray for heatmap plot
     """
-    x = len(coord_range[xidx])
-    y = len(coord_range[yidx])
-    Data = np.empty((x, y), dtype=np.float64)
-    for i, j in itertools.product(range(x), range(y)):
-        pt = xarray_piecewise(xaxis, yaxis, z_value, nprop, i, j)
-        Data[i, j] = interp(pt)
-    return xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: coord_range[xidx], yaxis: coord_range[yidx]})
+    pt = xarray_point(xaxis, yaxis, z_value, nprop, xidx, yidx)
+    Data = interp(pt)
+    return xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: crange[xidx], yaxis: crange[yidx]})
 
-def xarray_piecewise(xaxis, yaxis, z_value, nprop, i, j) -> np.array:
-    if xaxis == coord[0] and yaxis == coord[1]:
-        return np.array([nprop, coord_range[0][i], coord_range[1][j], z_value])
-    elif xaxis == coord[0] and yaxis == coord[2]:
-        return np.array([nprop, coord_range[0][i], z_value, coord_range[2][j]])
-    elif xaxis == coord[1] and yaxis == coord[0]:
-        return np.array([nprop, coord_range[0][j], coord_range[1][i], z_value])
-    elif xaxis == coord[1] and yaxis == coord[2]:
-        return np.array([nprop, z_value, coord_range[1][i], coord_range[2][j]])
-    elif xaxis == coord[2] and yaxis == coord[0]:
-        return np.array([nprop, coord_range[0][j], z_value, coord_range[2][i]])
-    elif xaxis == coord[2] and yaxis == coord[1]:
-        return np.array([nprop, z_value, coord_range[1][j], coord_range[2][i]])
+def xarray_point(xaxis, yaxis, z_value, nprop, xidx, yidx) -> list:
+    """
+    Generates points for xarray_creator()
+    """
+    x = range(len(crange[xidx]))
+    y = range(len(crange[yidx]))
+
+    matrix = []
+    for i in x:
+        row = []
+        for j in y:
+            inner = [nprop]
+            inner.extend(crange[k][i] if xaxis == coord[k] else crange[k][j] if yaxis == coord[k] 
+                        else z_value for k in range(3))
+            row.append(np.array(inner, dtype=np.float64))
+
+        matrix.append(row)
+
+    return matrix
 
 def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) -> px.scatter:
     fig = px.scatter(title=titulo)
@@ -246,8 +243,8 @@ def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
     iso1 = np.array(iso1)
 
     df = pd.DataFrame()
-    df[axis] = coord_range[idx]
-    df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, coord_range[idx], df)
+    df[axis] = crange[idx]
+    df = df_creator(axis, type_series, iso1, nCoord_array, coord_value, nprop, crange[idx], df)
 
     fig = fig_creator(xaxis, yaxis, axis, iso1, titulo, nCoord_array_str, df, idx2)
     interruptor(df, fig, xaxis, yaxis, type_series)
@@ -261,8 +258,8 @@ def coord_on_both_axes(xaxis, yaxis, Fixed):
     yidx = get_idx(coord, yaxis)
 
     zidx = np.delete(np.array([0, 1, 2]), [xidx, yidx])[0]
-    minimo=coord_range[zidx][0]
-    maximo=coord_range[zidx][-1]
+    minimo=crange[zidx][0]
+    maximo=crange[zidx][-1]
     z_value = tab3.number_input(f'Choose a {coord[zidx]}:', min_value=minimo, max_value=maximo)
 
     Data = xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
@@ -297,9 +294,9 @@ def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
     iso2 = np.array(iso2)
 
     df = pd.DataFrame()
-    df[Not_fixed] = coord_range[idx]
-    df = df_creator(Not_fixed, type_series, iso1, nCoord_array, coord_value, nprop1, coord_range[idx], df)
-    df = df_creator(Not_fixed, type_series, iso2, nCoord_array, coord_value, nprop2, coord_range[idx], df)
+    df[Not_fixed] = crange[idx]
+    df = df_creator(Not_fixed, type_series, iso1, nCoord_array, coord_value, nprop1, crange[idx], df)
+    df = df_creator(Not_fixed, type_series, iso2, nCoord_array, coord_value, nprop2, crange[idx], df)
                     
     fig = fig_creator(xaxis, yaxis, iso1, iso2, titulo, nCoord_array_str, df, idx2)    
     interruptor(df, fig, xaxis, yaxis, type_series)
@@ -332,7 +329,7 @@ if uploaded_file is not None:
   
     # properties from json
     with st.spinner(text="Almost done..."):
-        coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
+        coord_label, coord_unit, crange, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
 
     # some useful arrays
     const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
@@ -351,7 +348,7 @@ if uploaded_file is not None:
 
     # needed for interpolation
     prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
-    interp = ip.RegularGridInterpolator((prop_range, coord_range[0], coord_range[1], coord_range[2]), prop_table)
+    interp = ip.RegularGridInterpolator((prop_range, crange[0], crange[1], crange[2]), prop_table)
 
     # container for page
     maincont.header(fluid)
