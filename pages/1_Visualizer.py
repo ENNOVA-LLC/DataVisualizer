@@ -51,13 +51,23 @@ def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
         st.download_button(label="Download data", data=fc.convert_df(df, to_type), file_name=nombre)
 
 def prop_definer(prop_label, prop_table, prop, variables, new_prop):
+    def D(array, axis):
+        """
+        Function to compute the gradient of a property
+        """
+        if axis == 0:
+            dx = crange[0][1] - crange[0][0]   # dInjAmt/dGOR
+        elif axis == 1:
+            dx = crange[1][1] - crange[1][0]   # dP
+        elif axis == 2:
+            dx = crange[2][1] - crange[2][0]   # dT
+        return np.gradient(array, dx, axis=axis)
+
     prop_list = remove_operators(new_prop)
-    # res = [prop_list[i] for i in range(len(prop_list)) if prop_list[i] in prop_label]
-    res = [p for p in prop_list if p in prop_label]
-    res = np.array(res)
+    res = np.array([p for p in prop_list if p in prop_label])
     if new_prop != "":
         prop_str = new_prop
-        if np.size(res) != 0:
+        if res.size != 0:
             for r in res:
                 x = get_idx(prop_label, r)
                 prop_str = prop_str.replace(r, f"prop_table[{x}, :, :, :]")
@@ -84,6 +94,7 @@ def remove_operators(new_prop):
     mod = mod.replace("*", " ")
     mod = mod.replace("(", " ")
     mod = mod.replace(")", " ")
+    mod = mod.replace(",", " ")
     return mod.split()
 
 def isocurve(type_series: str) -> tuple[np.array]:
@@ -343,6 +354,7 @@ if uploaded_file is not None:
                         coord[2]: (const_coord[0], const_coord[1])}
 
     # define a new property by performing elementary operations on the base properties
+    # update: we can now calculate the gradient, e.g., D(Ceq, 1) is the derivative of Ceq wrt Pressure
     new_prop = tab1.text_input("Define a new property:", placeholder="e.g. FRI_L1 / MW_L1")
     prop_label, prop_table, prop, variables = prop_definer(prop_label, prop_table, prop, variables, new_prop)
 
