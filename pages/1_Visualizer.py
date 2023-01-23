@@ -226,8 +226,8 @@ def change_range(fig):
     y_min = tab4.number_input("Min value of y-axis", value=full_fig.layout.yaxis.range[0], key=f"ymin_{st.session_state.axes}")
     y_max = tab4.number_input("Max value of y-axis", value=full_fig.layout.yaxis.range[1], key=f"ymax_{st.session_state.axes}")
 
-    fig.update_yaxes(range=[y_min, y_max])
-    fig.update_xaxes(range=[x_min, x_max])
+    fig.update_xaxes(range=[x_min, x_max], autorange=False)
+    fig.update_yaxes(range=[y_min, y_max], autorange=False)
     return fig
 
 def coord_on_one_axis(xaxis: str, yaxis: str, type_series: str):
@@ -275,11 +275,11 @@ def coord_on_both_axes(xaxis, yaxis, Fixed):
 
     Data = xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
     fig = px.imshow(Data.T, labels={'color': Fixed}, color_continuous_scale='Jet', origin='lower')
+    fig = change_range(fig)
     fig.update_layout(title=f'{coord[zidx]}: {z_value}')
     if tab5.checkbox("Smooth plot"):
         fig.update_traces(zsmooth="best")
         
-    fig = change_range(fig)
     df = Data.to_pandas()
     interruptor(df, fig, xaxis, yaxis, Fixed)
 
