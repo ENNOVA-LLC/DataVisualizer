@@ -39,8 +39,11 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     # write each col of df_master to a list
     df_str = [df_master[col].tolist() for col in df_cols]
 
+    # remove empty spaces
+    df_str_no_space = [col[0].replace(' ', '') for col in df_str]
+
     # extract CSV into lists
-    df_list = [col[0].split(", ") for col in df_str]
+    df_list = [col.split(",") for col in df_str_no_space]
 
     # convert coordinate vals from string to float
     idx_coord = df_cols.index("coord_label")    #idx of coord_label
@@ -72,7 +75,8 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
             for iX1, iX2 in itertools.product(range(nX[1]), range(nX[2])):
                 # split each string and convert to a list of floats
                 prop_str = prop_TP[iX1][iX2]
-                prop_val = prop_str.split(", ")
+                prop_str_no_space = prop_str.replace(' ', '')
+                prop_val = prop_str_no_space.split(",")
                 prop_val = [float(item) for item in prop_val]
                 
                 # populate prop_table
@@ -126,7 +130,7 @@ def get_data_from_json(prop_json) -> tuple:
     coord_3 = np.round(coord_3, 2)
     coord_range = (coord_1, coord_2, coord_3)
     prop_table =  np.asarray(df.at['prop_table', 0], dtype=np.float64)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
-    prop_table =  preproc(prop_table, coord_range, prop_label)       # interpolates failed calculations
+    # prop_table =  preproc(prop_table, coord_range, prop_label)       # interpolates failed calculations
 
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
@@ -154,7 +158,8 @@ def f_founder(arr):
     std = np.sqrt(var)
     mu = c1
     z = np.abs((arr - mu)/std)      # z-score with abs
-    z = np.where(z == np.inf, 0, z)
+    # z = np.where(z == np.inf, 0, z)
+    np.nan_to_num(z, copy=False)
     return np.where(z >= 1)
 
 @st.experimental_memo(show_spinner=False)

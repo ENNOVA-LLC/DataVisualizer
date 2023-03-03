@@ -13,6 +13,8 @@ import kaleido
 # Page configuration (necessary for streamlit to work, must be at the beginning of program)
 st.set_page_config(page_title='Visualizer', page_icon=':bar_chart:', layout='wide')
 
+# TODO: Add a button for exporting the full xlsx as a json file
+# TODO: Save user defined property in json
 
 #%% -- functions
 def get_idx(X: np.array, a: str) -> str:
@@ -49,6 +51,8 @@ def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
         to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
         nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
         st.download_button(label="Download data", data=fc.convert_df(df, to_type), file_name=nombre)
+    
+    tab1.download_button(label="Download full json", data=prop_json, file_name=f'{fluid}.json')
 
 def prop_definer(prop_label, prop_table, prop, variables, new_prop):
     def D(array, axis):
