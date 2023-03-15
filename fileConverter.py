@@ -129,8 +129,8 @@ def get_data_from_json(prop_json) -> tuple:
     coord_3 = np.array(df.at[coord_label[2], 0])
     coord_3 = np.round(coord_3, 2)
     coord_range = (coord_1, coord_2, coord_3)
-    prop_table =  np.asarray(df.at['prop_table', 0], dtype=np.float64)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
-    # prop_table =  preproc(prop_table, coord_range, prop_label)       # interpolates failed calculations
+    prop_table = np.asarray(df.at['prop_table', 0], dtype=np.float64)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
+    prop_table = preproc(prop_table, coord_range, prop_label)       # interpolates failed calculations
 
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
