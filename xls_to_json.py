@@ -7,13 +7,19 @@ from config import ROOT_DIR, DATA_DIR
 
 def xlsx_to_dict(xlsx_file: str) -> tuple:
     """
-    returns 4D data block in dictionary format from input xls file
+    Returns 4D data block in dictionary format from input xls file.
     
-    arguments:
-        xlsx_file [str]: name of file (including file extension)
-    returns:
-        fluid [str]: fluid name
-        prop_dict [dict]: dictionary
+    Parameters
+    ----------
+    xlsx_file : str
+        Name of file (including file extension).
+    
+    Returns
+    -------
+    fluid : str
+        Fluid name.
+    prop_dict : dict
+        Converted xls file.
     """
     
     # remove file prefixes/suffixes
