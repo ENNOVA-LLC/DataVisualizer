@@ -1,10 +1,12 @@
-#%% import pkgs
+# import packages
 import itertools
+import json
 import numpy as np
 import pandas as pd
-import xarray as xr
 from scipy import interpolate as ip
-import plotly_express as px
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly
 import streamlit as st
 import fileConverter as fc
 import kaleido
@@ -16,7 +18,6 @@ st.set_page_config(page_title='Visualizer', page_icon=':bar_chart:', layout='wid
 # TODO: Add a button for exporting the full xlsx as a json file
 # TODO: Save user defined property in json
 
-#%% -- functions
 def get_idx(X: np.array, a: str) -> str:
     """
     Gets index of coordinate in its corresponding range of possible values
@@ -33,7 +34,7 @@ def clear_cache():
     for key in st.session_state.keys():
         del st.session_state[key]
     # Clear values from *all* memoized functions:
-    st.experimental_memo.clear()
+    st.cache_data.clear()
 
 def reset_axes():
     """
@@ -45,14 +46,16 @@ def reset_axes():
     st.session_state.axes += 1
 
 def interruptor(df: pd.DataFrame, fig, xaxis, yaxis, type_series):
-    tab5.plotly_chart(fig)
+    with tab5:
+        st.plotly_chart(fig)
+        fig_as_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder, indent=4).encode("utf-8")
+        st.download_button(label="Download figure as json", data=fig_as_json, file_name="figure.json")
+
     with tab6:
         st.dataframe(df.copy())
         to_type = st.radio('Select data format:', ('csv', 'xlsx', 'json'))
         nombre = f'{xaxis}_vs_{yaxis}_{type_series}.{to_type}'
         st.download_button(label="Download data", data=fc.convert_df(df, to_type), file_name=nombre)
-    
-    tab1.download_button(label="Download full json", data=prop_json, file_name=f'{fluid}.json')
 
 def prop_definer(prop_label, prop_table, prop, variables, new_prop):
     def D(array, axis):
@@ -100,6 +103,23 @@ def remove_operators(new_prop):
     mod = mod.replace(")", " ")
     mod = mod.replace(",", " ")
     return mod.split()
+
+@st.cache_data(show_spinner=False)
+def check_uploaded_file_type(uploaded_file):
+    if uploaded_file.type == 'application/json':
+        fluid = uploaded_file.name.replace('.json', '')
+        fluid = fluid.replace('lookup_', '')
+        prop_dict = json.load(uploaded_file)
+    elif uploaded_file.type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        with st.spinner(text="In progress..."):
+            fluid, prop_dict = fc.xlsx_to_dict(uploaded_file)
+
+    return fluid, prop_dict
+
+@st.cache_data(show_spinner=False)
+def property_interpolator(crange, prop_label, prop_table):
+    prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
+    return ip.RegularGridInterpolator((prop_range, crange[0], crange[1], crange[2]), prop_table)
 
 def isocurve(type_series: str) -> tuple[np.array]:
     """
@@ -171,17 +191,16 @@ def df_point(j, coord_value, nCoord, axis, type_series, nprop) -> np.array:
                 else coord_value for k in range(3))
     return np.array(inner, dtype=np.float64)
 
-def xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value) -> xr.DataArray:
+def matrix_creator(xaxis, yaxis, nprop, xidx, yidx, z_value) -> np.ndarray:
     """
-    Creates xarray for heatmap plot
+    Creates matrix for heatmap plot
     """
-    pt = xarray_point(xaxis, yaxis, z_value, nprop, xidx, yidx)
-    Data = interp(pt)
-    return xr.DataArray(Data, dims=(xaxis, yaxis), coords={xaxis: crange[xidx], yaxis: crange[yidx]})
+    pt = matrix_points(xaxis, yaxis, z_value, nprop, xidx, yidx)
+    return interp(pt)
 
-def xarray_point(xaxis, yaxis, z_value, nprop, xidx, yidx) -> list:
+def matrix_points(xaxis, yaxis, z_value, nprop, xidx, yidx) -> list:
     """
-    Generates points for xarray_creator()
+    Generates points for matrix_creator()
     """
     x = range(len(crange[xidx]))
     y = range(len(crange[yidx]))
@@ -199,8 +218,8 @@ def xarray_point(xaxis, yaxis, z_value, nprop, xidx, yidx) -> list:
 
     return matrix
 
-def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) -> px.scatter:
-    fig = px.scatter(title=titulo)
+def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) -> go.Figure:
+    fig = go.Figure()
     if np.size(nCoord_array_str) != 0:
         if xaxis in coord:
             for i, nCoord_str in enumerate(nCoord_array_str):
@@ -216,7 +235,7 @@ def fig_creator(xaxis, yaxis, axis1, axis2, titulo, nCoord_array_str, df, idx2) 
                                 hovertemplate=f'{xaxis}'+': %{x} <br>'+f'{yaxis}'+': %{y}')
         fig = change_range(fig)
 
-    fig.update_layout(xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:', showlegend=True)
+    fig.update_layout(title=titulo, xaxis_title=xaxis, yaxis_title=yaxis, legend_title=f'{coord[idx2]}:', showlegend=True)
     return fig
 
 def change_range(fig):
@@ -277,14 +296,29 @@ def coord_on_both_axes(xaxis, yaxis, Fixed):
     maximo=crange[zidx][-1]
     z_value = tab3.number_input(f'Choose a {coord[zidx]}:', min_value=minimo, max_value=maximo)
 
-    Data = xarray_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
-    fig = px.imshow(Data.T, labels={'color': Fixed}, color_continuous_scale='Jet', origin='lower')
+    Data = matrix_creator(xaxis, yaxis, nprop, xidx, yidx, z_value)
+    fig = px.imshow(Data.T, 
+                    x=crange[xidx],
+                    y=crange[yidx],
+                    title=f'{coord[zidx]}: {z_value}', 
+                    labels={'color': Fixed}, 
+                    color_continuous_scale='Jet', 
+                    origin='lower',
+                    aspect='auto'
+                    )
+    
     fig = change_range(fig)
-    fig.update_layout(title=f'{coord[zidx]}: {z_value}')
+
+    fig.update_layout(
+        xaxis={"title": {"text": xaxis}},
+        yaxis={"title": {"text": yaxis}},
+    )
+
     if tab5.checkbox("Smooth plot"):
         fig.update_traces(zsmooth="best")
         
-    df = Data.to_pandas()
+    df = pd.DataFrame(Data, columns=crange[yidx])
+    df.set_index(crange[xidx], inplace=True)
     interruptor(df, fig, xaxis, yaxis, Fixed)
 
 def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
@@ -318,33 +352,31 @@ def prop_on_both_axes(xaxis: str, yaxis: str, type_series: str, Not_fixed: str):
 
 # --/ functions
 
-
-#%%
 # containers to structure page
 maincont = st.container()
 cont1 = st.container()
 with cont1:
     tab1, tab2, tab3, tab4 = st.sidebar.tabs(("File uploader", "Choose axes", "Series type", "Custom range"))
 
-# set file path 
-# ruta = DATA_DIR / 'output' / 'S14-SAFT-MILA2020.json'
-
 # File uploader
 # the on_change parameter expects a function object (without the parenthesis)
 uploaded_file = tab1.file_uploader('Upload fluid file:', type=('xlsx', 'json'), on_change=clear_cache)
-
+    
 if uploaded_file is not None:
-    if uploaded_file.type == 'application/json':
-        fluid = uploaded_file.name.replace('.json', '')
-        fluid = fluid.replace('lookup_', '')
-        prop_json = uploaded_file
-    elif uploaded_file.type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-        with st.spinner(text="In progress..."):
-            fluid, prop_json = fc.xlsx_to_json(uploaded_file)
+    fluid, prop_dict = check_uploaded_file_type(uploaded_file)
   
     # properties from json
     with st.spinner(text="Almost done..."):
-        coord_label, coord_unit, crange, prop_label, prop_unit, prop_table = fc.get_data_from_json(prop_json)
+        coord_label, coord_unit, crange, prop_label, prop_unit, prop_table = fc.get_data_from_dict(prop_dict)
+
+    # download full json
+    full_json = json.dumps(prop_dict, indent=4)
+    tab1.download_button(
+        label="Download json", 
+        data=full_json.encode('utf-8'), 
+        file_name=f'{fluid}.json',
+        mime='application/json'    
+    )
 
     # some useful arrays
     const_coord = np.array([f'constant {coord_label[0]}', f'constant {coord_label[1]}', f'constant {coord_label[2]}'])
@@ -359,12 +391,11 @@ if uploaded_file is not None:
 
     # define a new property by performing elementary operations on the base properties
     # update: we can now calculate the gradient, e.g., D(Ceq, 1) is the derivative of Ceq wrt Pressure
-    new_prop = tab1.text_input("Define a new property:", placeholder="e.g. FRI_L1 / MW_L1")
+    new_prop = tab2.text_input("Define a new property:", placeholder="e.g. FRI_L1 / MW_L1")
     prop_label, prop_table, prop, variables = prop_definer(prop_label, prop_table, prop, variables, new_prop)
 
-    # needed for interpolation
-    prop_range = np.linspace(0, len(prop_label) - 1, len(prop_label))
-    interp = ip.RegularGridInterpolator((prop_range, crange[0], crange[1], crange[2]), prop_table)
+    # interpolation
+    interp = property_interpolator(crange, prop_label, prop_table)
 
     # container for page
     maincont.header(fluid)
