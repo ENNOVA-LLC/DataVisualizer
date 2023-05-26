@@ -1,4 +1,4 @@
-#%% import pkgs
+# import packages
 import numpy as np
 import pandas as pd
 from scipy import ndimage as nd
@@ -9,26 +9,31 @@ import itertools
 import openpyxl
 from io import BytesIO
 
-
-#%% functions
-@st.experimental_memo(show_spinner=False)
-def xlsx_to_json(uploaded_file: str) -> tuple:
+# define functions
+@st.cache_data(show_spinner=False)
+def xlsx_to_dict(xlsx_file: str):
     """
-    returns 4D data block in json format from input xls file
+    Returns 4D data block in dictionary format from input xls file.
     
-    arguments:
-        uploaded_file [str]: name of file (including file extension)
-    return:
-        fluid [str]: fluid name
-        dict [json]: json file
+    Parameters
+    ----------
+    xlsx_file : str
+        Name of file (including file extension).
+    
+    Returns
+    -------
+    fluid : str
+        Fluid name.
+    prop_dict : dict
+        Converted xls file.
     """
     
     # remove file prefixes/suffixes
-    fluid = uploaded_file.name.replace('.xlsx', '')
+    fluid = xlsx_file.name.replace('.xlsx', '')
     fluid = fluid.replace('lookup_', '')
     
     # create excel object and create dataFrame
-    xls = pd.ExcelFile(uploaded_file)
+    xls = pd.ExcelFile(xlsx_file)
     df_master = pd.read_excel(xls, sheet_name="master")
     df_lookup = pd.read_excel(xls, sheet_name=None, header=None)
 
@@ -40,7 +45,7 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
     df_str = [df_master[col].tolist() for col in df_cols]
 
     # remove empty spaces
-    df_str_no_space = [col[0].replace(' ', '') for col in df_str]
+    df_str_no_space = [str(col[0]).replace(' ', '') if isinstance(col[0], (int, float)) else col[0].replace(' ', '') for col in df_str]
 
     # extract CSV into lists
     df_list = [col.split(",") for col in df_str_no_space]
@@ -97,44 +102,48 @@ def xlsx_to_json(uploaded_file: str) -> tuple:
         prop_dict[df_cols[i]] = df_list[i]
 
     # create json object from dict
-    return fluid, json.dumps(prop_dict)
+    return fluid, prop_dict
 
-@st.experimental_memo(show_spinner=False)
-def get_data_from_json(prop_json) -> tuple:
+@st.cache_data(show_spinner=False)
+def get_data_from_dict(prop_dict):
     """
-    extract data from json file to np.array
+    Extract data from dictionary or JSON file.
     data: fluid properties (Ceq, dens, visco, etc) = f(coord: GOR,P,T)
     
-    arguments:
-        prop_json: `.json` file
-    returns:
-        coord_label [np.array[str]]: coordinate labels (ex: GOR, P, T)
-        coord_unit [np.array[str]]: unit corresponding to coordinates (ex: scf/stb, psig, F) 
-        coord_range [np.array[float]]: value ranges corresponding to coordinates
-        prop_label [np.array[str]]: property labels (ex: dens_L1, visco_L2)
-        prop_unit [np.array[str]]: units corresponding to property strings (ex: g/cc, cP)        
-        prop_table [np.array[float]]: 4D block (nProp x nGOR x nP x nT) of data containing all properties: Props = f(GOR, P, T) 
-    """
-    # convert json to df
-    df = pd.read_json(prop_json, orient='index')
+    Parameters
+    ----------
+    prop_dict : dict
 
+    Returns
+    -------
+    coord_label : tuple
+        Coordinate labels (ex: GOR, P, T).
+    coord_unit : tuple 
+        Unit corresponding to coordinates (ex: scf/stb, psig, F).
+    coord_range : tuple[ndarray]
+        Value ranges corresponding to coordinates.
+    prop_label : tuple 
+        Property labels (ex: dens_L1, visco_L2).
+    prop_unit : tuple 
+        Units corresponding to property strings (ex: g/cc, cP).       
+    prop_table : ndarray
+        4D block (nProp x nGOR x nP x nT) of data containing all properties: prop_dict = f(GOR, P, T) 
+    """
     # extract properties
-    coord_label = np.array(df.at['coord_label', 0])
-    coord_unit = np.array(df.at['coord_unit', 0])
-    prop_label = np.array(df.at['prop_label', 0])
-    prop_unit = np.array(df.at['prop_unit', 0])
-    coord_1 = np.array(df.at[coord_label[0], 0])
-    coord_2 = np.array(df.at[coord_label[1], 0])
-    coord_2 = np.round(coord_2, 2)
-    coord_3 = np.array(df.at[coord_label[2], 0])
-    coord_3 = np.round(coord_3, 2)
+    coord_label = tuple(prop_dict['coord_label'])
+    coord_unit = tuple(prop_dict['coord_unit'])
+    prop_label = tuple(prop_dict['prop_label'])
+    prop_unit = tuple(prop_dict['prop_unit'])
+    coord_1 = np.array(prop_dict[coord_label[0]])
+    coord_2 = np.array(prop_dict[coord_label[1]])
+    coord_3 = np.array(prop_dict[coord_label[2]])
     coord_range = (coord_1, coord_2, coord_3)
-    prop_table = np.asarray(df.at['prop_table', 0], dtype=np.float64)  # 4D block of data containing all properties (nProps, nGOR, nP, nT)
+    prop_table = np.array(prop_dict['prop_table'])
     prop_table = preproc(prop_table, coord_range, prop_label)       # interpolates failed calculations
 
     return coord_label, coord_unit, coord_range, prop_label, prop_unit, prop_table
 
-@st.experimental_memo
+@st.cache_data(show_spinner=False)
 def convert_df(df: pd.DataFrame, to_type: str):
     """
     DataFrame converter: DF -> csv/excel/json
@@ -150,6 +159,7 @@ def convert_df(df: pd.DataFrame, to_type: str):
         writer.save()
         return output.getvalue()
 
+@st.cache_data(show_spinner=False)
 def f_founder(arr):
     c1 = nd.uniform_filter(arr, size=3)
     c2 = nd.uniform_filter(arr*arr, size=3)
@@ -158,11 +168,10 @@ def f_founder(arr):
     std = np.sqrt(var)
     mu = c1
     z = np.abs((arr - mu)/std)      # z-score with abs
-    # z = np.where(z == np.inf, 0, z)
     np.nan_to_num(z, copy=False)
     return np.where(z >= 1)
 
-@st.experimental_memo(show_spinner=False)
+@st.cache_data(show_spinner=False)
 def preproc(ptable, crange, plabel):
     x = range(len(plabel))
     y = range(len(crange[0]))
@@ -177,13 +186,11 @@ def preproc(ptable, crange, plabel):
         arr[e] = np.nan
         arr = np.ma.masked_invalid(arr)
         xx, yy = np.meshgrid(crange[2], crange[1])
-        # get only the valid values
+        # get only valid values
         x1 = xx[~arr.mask]
         y1 = yy[~arr.mask]
         newarr = arr[~arr.mask]
         newarr = ip.griddata((x1, y1), newarr.ravel(), (xx, yy), method='cubic')
         # https://stackoverflow.com/questions/37662180/interpolate-missing-values-2d-python
         ptable[X0, X1] = newarr
-    return ptable
-
-#--/ functions
+    return np.where(ptable < 0., 0., ptable)
